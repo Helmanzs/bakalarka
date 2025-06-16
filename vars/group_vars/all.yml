@@ -20,3 +20,5 @@ ansible_connection: community.general.lxd
 ansible_user: root
 ansible_remote_tmp: /tmp/.ansible
 ansible_lxd_container: "{{ inventory_hostname }}"
+
+common_dir: "{{ playbook_dir }}/../common"

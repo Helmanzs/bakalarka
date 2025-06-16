@@ -18,7 +18,7 @@ vm_devices:
     type: disk
     pool: default
     path: /
-    size: 10GB
+    size: 12GB
 
 vm_profiles: "{{ lxd_profiles_base + ['opentsdb-net'] }}"
 
@@ -28,7 +28,7 @@ vm_openjdk_path: "/usr/lib/jvm/java-8-openjdk-amd64"
 
 # FILE VARS
 data_file_name: "raltra"
-data_file: "raltra.txt.gz" #"raltra.txt.gz"
+data_file: "raltra.txt" #"raltra.txt.gz"
 data_tar: "raltra.txt.tar.gz"
 script_file: "send_data.py"
 
@@ -36,7 +36,7 @@ script_file: "send_data.py"
 db_version: "2.4.1"
 db_deb_url: "https://github.com/OpenTSDB/opentsdb/releases/download/v{{ db_version }}/opentsdb-{{ db_version }}_all.deb"
 db_host: 127.0.0.1
-db_port: 6667
+db_port: 4242
 login_db: raltra
 collection: car_telemetry
 db_chunk_size: 50000

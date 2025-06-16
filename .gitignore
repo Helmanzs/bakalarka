@@ -1,1 +1,63 @@
+# Ansible
+*.retry
+*.log
+*.out
+*.bak
+*.tmp
+*.swp
+*.pyc
+*.pyo
+__pycache__/
+inventory.ini
+*.vault
+.vault-pass
+secrets.yml
+group_vars/*.vault
+host_vars/*.vault
+
+# Ignore roles downloaded from Galaxy
+roles/*/
+!roles/requirements.yml
+
+# Shell scripts (no need to ignore *.sh)
+# Ignore compiled binaries, temp files
+*.swp
+*.swo
+*.bak
+*.tmp
+*.log
+*.out
+
+# Ignore test outputs
+test-output/
+coverage/
+*.cov
+*.gcov
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Linux
+*~
+
+# IDEs and editors
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Git
+.git/
+.gitignore
+
+# Optional: ignore environment files
+.env
+.env.*
+
 *.gz
+*.txt
+*.csv

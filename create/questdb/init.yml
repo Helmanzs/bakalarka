@@ -3,70 +3,15 @@
   hosts: localhost
   vars_files:
     - /etc/ansible/host_vars/questdb.yml
-
   tasks:
-    - name: Check if LXD VM exists
-      ansible.builtin.command:
-        cmd: "lxc info {{ vm_name }}"
-      register: vm_state
-      ignore_errors: true
-      changed_when: false
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
 
-    - name: Stop the VM
-      ansible.builtin.command:
-        cmd: "lxc stop {{ vm_name }} --force"
-      when: vm_state.rc == 0
-      ignore_errors: true
-      changed_when: false
-
-    - name: Delete LXD VM if it exists
-      community.general.lxd_container:
-        name: "{{ vm_name }}"
-        state: absent
-      when: vm_state.rc == 0
-
-    - name: Launch LXD VM
-      community.general.lxd_container:
-        name: "{{ vm_name }}"
-        type: "{{ lxd_type_base }}"
-        state: started
-        source:
-          type: image
-          mode: pull
-          server: "{{ lxd_image_server_base }}"
-          protocol: "{{ lxd_image_protocol_base }}"
-          alias: "{{ lxd_image_base }}"
-        profiles: "{{ vm_profiles }}"
-        config: "{{ vm_config }}"
-        devices: "{{ vm_devices }}"
-        wait_for_ipv4_addresses: true
-        timeout: 600
-
-    - name: Wait for VM init
-      ansible.builtin.wait_for:
-        timeout: 10
-
-- name: Configure VM
+- name: Common config
   hosts: questdb
   tasks:
-    - name: Create tmp directory
-      ansible.builtin.file:
-        path: "{{ ansible_remote_tmp }}"
-        state: directory
-        mode: "1777"
-
-    - name: Update system packages
-      ansible.builtin.apt:
-        update_cache: true
-        upgrade: dist
-        cache_valid_time: "{{ apt_cache_valid_time_base }}"
-
-    - name: Install packages
-      ansible.builtin.apt:
-        name: "{{ vm_packages }}"
-        state: present
-        update_cache: true
-        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
 
 - name: Install and configure QuestDB
   hosts: questdb
@@ -231,29 +176,5 @@
 - name: Post processing
   hosts: questdb
   tasks:
-    - name: Save result if in master run
-      block:
-        - name: Ensure results directory exists
-          file:
-            path: "{{ results_dir }}"
-            state: directory
-          delegate_to: localhost
-
-        - name: Save result to file
-          copy:
-            content: |
-              {
-                "db": "{{ vm_name }}",
-                "host": "{{ inventory_hostname }}",
-                "sum_salt": {{ result | to_json }}
-              }
-            dest: "{{ results_dir }}/{{ vm_name }}-{{ inventory_hostname }}.json"
-          delegate_to: localhost
-      when: is_master_run | default(false)
-      run_once: true
-
-    - name: Stop container
-      community.general.lxd_container:
-        name: "{{ vm_name }}"
-        state: stopped
-      delegate_to: localhost
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"

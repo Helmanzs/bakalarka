@@ -3,108 +3,15 @@
   hosts: localhost
   vars_files:
     - /etc/ansible/host_vars/opentsdb.yml
-
   tasks:
-    - name: Check if LXD VM exists
-      ansible.builtin.command:
-        cmd: "lxc info {{ vm_name }}"
-      register: vm_state
-      ignore_errors: true
-      changed_when: false
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
 
-    - name: Stop the VM
-      ansible.builtin.command:
-        cmd: "lxc stop {{ vm_name }} --force"
-      when: vm_state.rc == 0
-      ignore_errors: true
-      changed_when: false
-
-    - name: Delete LXD VM if it exists
-      community.general.lxd_container:
-        name: "{{ vm_name }}"
-        state: absent
-      when: vm_state.rc == 0
-
-    - name: Launch LXD VM
-      community.general.lxd_container:
-        name: "{{ vm_name }}"
-        type: "{{ lxd_type_base }}"
-        state: started
-        source:
-          type: image
-          mode: pull
-          server: "{{ lxd_image_server_base }}"
-          protocol: "{{ lxd_image_protocol_base }}"
-          alias: "{{ lxd_image_base }}"
-        profiles: "{{ vm_profiles }}"
-        config: "{{ vm_config }}"
-        devices: "{{ vm_devices }}"
-        wait_for_ipv4_addresses: true
-        timeout: 600
-
-    - name: Wait for VM to initialize
-      ansible.builtin.wait_for:
-        timeout: 10
-
-- name: Configure VM
+- name: Common config
   hosts: opentsdb
   tasks:
-    - name: Create tmp directory
-      ansible.builtin.file:
-        path: "{{ ansible_remote_tmp }}"
-        state: directory
-        mode: "1777"
-
-    - name: Update system packages
-      ansible.builtin.apt:
-        update_cache: true
-        upgrade: dist
-        cache_valid_time: "{{ apt_cache_valid_time_base }}"
-
-    - name: Install packages
-      ansible.builtin.apt:
-        name: "{{ vm_packages }}"
-        state: present
-        update_cache: true
-        cache_valid_time: "{{ apt_cache_valid_time_base }}"
-
-    # - name: Configure swap file
-    #   block:
-    #     - name: Check if /swapfile is active swap
-    #       ansible.builtin.command:
-    #         cmd: "swapon --show=NAME --noheadings"
-    #       register: swap_active
-    #       changed_when: false
-
-    #     - name: Allocate swap file (if not exists and not active)
-    #       ansible.builtin.command:
-    #         cmd: "fallocate -l {{ vm_swap_size }} /swapfile"
-    #       args:
-    #         creates: /swapfile
-    #       when: "'/swapfile' not in swap_active.stdout"
-
-    #     - name: Set permissions on swap file
-    #       ansible.builtin.command:
-    #         cmd: chmod 600 /swapfile
-    #       when: "'/swapfile' not in swap_active.stdout"
-
-    #     - name: Format swap (if not active)
-    #       ansible.builtin.command:
-    #         cmd: mkswap /swapfile
-    #       when: "'/swapfile' not in swap_active.stdout"
-
-    #     - name: Enable swap (if not active)
-    #       ansible.builtin.command:
-    #         cmd: swapon /swapfile
-    #       when: "'/swapfile' not in swap_active.stdout"
-
-    #     - name: Ensure swap entry exists in /etc/fstab
-    #       ansible.builtin.lineinfile:
-    #         path: /etc/fstab
-    #         line: "/swapfile none swap sw 0 0"
-    #         regexp: '^\s*/swapfile\s+'
-    #         state: present
-    #         insertafter: EOF
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
 
 - name: Configure SSH for HBase
   hosts: opentsdb
@@ -238,6 +145,14 @@
             regex: '^#?\s*tsd\.core\.auto_create_tagvs\s*=',
             line: "tsd.core.auto_create_tagvs = true",
           }
+        - {
+            regex: '^#?\s*tsd\.http\.request\.enable_chunked\s*=',
+            line: "tsd.http.request.enable_chunked = true",
+          }
+        - {
+            regex: '^#?\s*tsd\.http\.request\.max_chunk\s*=',
+            line: "tsd.http.request.max_chunk = 1073741824",
+          }
 
     - name: Create OpenTSDB tables
       ansible.builtin.command: >
@@ -253,91 +168,40 @@
 
 - name: Setup database and import data
   hosts: opentsdb
-  gather_facts: false
+  vars:
+    temp_dir: "/tmp/{{ data_file_name }}_temp"
   tasks:
-    # - name: Push and extract data
-    #   ansible.builtin.unarchive:
-    #     src: "{{  ansible_data_dir }}/{{ data_tar }}"
-    #     dest: "/tmp/"
-    #     mode: "0777"
-
-    - name: Push data
-      ansible.builtin.copy:
-        src: "{{ ansible_data_dir }}/{{ data_file }}"
+    - name: Push and extract data
+      ansible.builtin.unarchive:
+        src: "{{  ansible_data_dir }}/{{ data_tar }}"
         dest: "/tmp/"
         mode: "0777"
 
-    - name: Split and compress data file
+    - name: Create chunk directory
+      ansible.builtin.file:
+        path: "{{ temp_dir }}"
+        state: directory
+
+    - name: Split and compress file into chunks
       ansible.builtin.shell: |
-        set -euo pipefail
-        exec > >(gzip > "/tmp/split_script.log.gz") 2>&1 
-        n=1
-        zcat "/tmp/{{ data_file }}" | while IFS= read -r line; do
-          if [ $(( (i++) % {{ db_chunk_size }} )) -eq 0 ]; then
-            [ -n "$out" ] && gzip -c > "$out"
-            out="/tmp/{{ data_file | regex_replace('\.gz$', '') }}.$(printf "%03d" $n).gz"
-            n=$((n+1))
-          fi
-          printf "%s\n" "$line" || exit 1
-        done
-        [ -n "$out" ] && gzip -c > "$out"
+        split -C 100M /tmp/{{ data_file }} {{ temp_dir }}/chunk_
+        pigz {{ temp_dir }}/chunk_*
       args:
         executable: /bin/bash
-        creates: "/tmp/{{ data_file | regex_replace('\\.gz$', '') }}.001.gz"
+
+    - name: Upload chunks using Python script
+      ansible.builtin.script:
+        cmd: "{{ ansible_scripts_dir }}/{{ script_file }} {{ temp_dir }}"
+      args:
+        executable: python3
 
     - name: Clean up data
       ansible.builtin.file:
-        path: "/tmp/{{ data_file }}"
+        path: "{{ item }}"
         state: absent
-
-    - name: find all the chunk files
-      ansible.builtin.find:
-        paths: /tmp
-        patterns: "{{ data_file_name }}.*"
-      register: chunk_files
-
-    - name: import each chunk into OpenTSDB
-      ansible.builtin.command:
-        cmd: "/usr/share/opentsdb/bin/tsdb import {{ item.path }}"
-      loop: "{{ chunk_files.files }}"
-      loop_control:
-        label: "{{ item.path }}"
-      register: import_results
-      retries: 3
-      delay: 5
-      until: import_results.rc == 0
-
-    - name: remove temporary chunk files
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ chunk_files.files }}"
-    # - name: Copy import script
-    #   ansible.builtin.copy:
-    #     src: "{{ ansible_scripts_dir }}/{{ script_file }}"
-    #     dest: /tmp/{{ script_file }}
-    #     mode: "0755"
-
-    # - name: Create temporary directory
-    #   ansible.builtin.file:
-    #     path: "/tmp/tsdb_import/"
-    #     state: directory
-    #     mode: "0700"
-
-    # - name: Split and import data in chunks via Python
-    #   ansible.builtin.script:
-    #     cmd: "{{ansible_scripts_dir}}/{{ script_file }} /tmp/{{ data_file }} {{ db_chunk_size }} /usr/share/opentsdb/bin/tsdb"
-    #   args:
-    #     executable: python3
-    #   register: send_data_result
-    #   changed_when: send_data_result.rc == 0
-    #   failed_when: send_data_result.rc != 0
-
-    # - name: Clean up temporary directory
-    #   ansible.builtin.file:
-    #     path: "{{ temp_dir }}"
-    #     state: absent
-    #   when: temp_dir is defined
+      loop:
+        - "/tmp/{{ data_file }}"
+        - "{{ temp_dir }}"
 
 - name: Verify data import
   hosts: opentsdb
@@ -352,16 +216,16 @@
       register: query_result
       changed_when: false
 
-    - name: Display result
-      ansible.builtin.debug:
-        msg: "{{ query_result.stdout }}"
-# - name: Push data
-#   ansible.builtin.copy:
-#     src: "{{ ansible_data_dir }}/{{ data_file }}"
-#     dest: "/tmp/"
-#     mode: "0777"
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.stdout }}"
 
-# - name: Import data
-#   ansible.builtin.command:
-#     cmd: /usr/share/opentsdb/bin/tsdb import /tmp/{{ data_file }}
-#   changed_when: true
+    - name: Display total SumSalt
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: opentsdb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
