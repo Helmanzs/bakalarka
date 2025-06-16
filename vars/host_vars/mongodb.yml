@@ -1,0 +1,32 @@
+---
+# VM VARS
+vm_name: mongodb
+vm_packages: "{{ packages_base +
+  [
+  'python3-pymongo'
+  ]
+  }}"
+vm_config:
+  limits.memory: "1GiB"
+  limits.cpu: "1"
+
+vm_devices:
+  root:
+    type: disk
+    pool: default
+    path: /
+    size: 8GB
+
+vm_profiles: "{{ lxd_profiles_base + ['mongodb-net'] }}"
+
+# FILE VARS
+data_file: "raltra.json"
+data_tar: "{{ data_file }}.tar.gz"
+script_file: ""
+
+# DB VARS
+gpg_key_url: "https://www.mongodb.org/static/pgp/server-8.0.asc"
+login_host: localhost
+login_port: 27017
+login_db: raltra
+collection: car_telemetry

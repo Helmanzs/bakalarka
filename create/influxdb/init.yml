@@ -1,0 +1,241 @@
+---
+- name: Init InfluxDB VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/influxdb.yml
+
+  tasks:
+    - name: Check if LXD VM exists
+      ansible.builtin.command:
+        cmd: "lxc info {{ vm_name }}"
+      register: vm_state
+      ignore_errors: true
+      changed_when: false
+
+    - name: Stop the VM
+      ansible.builtin.command:
+        cmd: "lxc stop {{ vm_name }} --force"
+      when: vm_state.rc == 0
+      ignore_errors: true
+      changed_when: false
+
+    - name: Delete LXD VM if it exists
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: absent
+      when: vm_state.rc == 0
+
+    - name: Launch LXD VM
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        type: "{{ lxd_type_base }}"
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: "{{ lxd_image_server_base }}"
+          protocol: "{{ lxd_image_protocol_base }}"
+          alias: "{{ lxd_image_base }}"
+        profiles: "{{ vm_profiles }}"
+        config: "{{ vm_config }}"
+        devices: "{{ vm_devices }}"
+        wait_for_ipv4_addresses: true
+        timeout: 600
+
+    - name: Wait for VM init
+      ansible.builtin.wait_for:
+        timeout: 10
+
+- name: Configure VM
+  hosts: influxdb
+  tasks:
+    - name: Create tmp directory
+      ansible.builtin.file:
+        path: "{{ ansible_remote_tmp }}"
+        state: directory
+        mode: "1777"
+
+    - name: Update system packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name: "{{ vm_packages }}"
+        state: present
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Create InfluxDB directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /root/.influxdb
+        - /root/.influxdb/data
+
+    - name: Create symbolic link
+      ansible.builtin.file:
+        src: /root/.influxdb/
+        dest: /influxdb
+        state: link
+
+- name: Install and configure InfluxDB
+  hosts: influxdb
+  tasks:
+    - name: Download InfluxDB3
+      ansible.builtin.get_url:
+        url: "{{ db_tar_url }}"
+        dest: /influxdb/influxdb3-core.tar.gz
+        mode: "0777"
+
+    - name: Extract InfluxDB3
+      ansible.builtin.unarchive:
+        src: /influxdb/influxdb3-core.tar.gz
+        dest: /influxdb/
+        extra_opts:
+          - "--strip-components=1"
+        remote_src: true
+        mode: "0777"
+
+    - name: Clean up download
+      ansible.builtin.file:
+        path: /influxdb/influxdb3-core.tar.gz
+        state: absent
+
+    - name: Update PATH environment variable
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        line: 'export PATH="$PATH:/root/.influxdb"'
+        create: true
+        mode: "0600"
+
+    - name: Create systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/influxdb3.service
+        content: |
+          [Unit]
+          Description=InfluxDB 3 Service
+          After=network.target
+
+          [Service]
+          User=root
+          ExecStart=/root/.influxdb/influxdb3 serve \
+            --node-id=node0 \
+            --http-bind=0.0.0.0:{{ db_port }} \
+            --object-store=file \
+            --data-dir /root/.influxdb/data
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start InfluxDB service
+      ansible.builtin.systemd:
+        name: influxdb3
+        state: started
+        enabled: true
+
+    - name: Generate InfluxDB3 admin token
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          /root/.influxdb/influxdb3 create token --admin \
+            | sed 's/\x1b\[[0-9;]*m//g' \
+            | sed -n 's/^Token: //p'
+        executable: /bin/bash
+      register: token_result
+      changed_when:
+        - token_result is succeeded
+        - token_result.stdout | length > 0
+
+    - name: Set INFLUXDB3_AUTH_TOKEN in .bashrc
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        line: 'export INFLUXDB3_AUTH_TOKEN="{{ token_result.stdout }}"'
+        create: true
+        mode: "0600"
+
+- name: Setup database and import data
+  hosts: influxdb
+  tasks:
+    - name: Deploy processing scripts
+      ansible.builtin.copy:
+        src: "{{ ansible_scripts_dir }}/{{ script_file }}"
+        dest: "/opt/"
+        mode: "0777"
+
+    - name: Extract data
+      ansible.builtin.unarchive:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: /tmp/
+        mode: "0777"
+
+    - name: Send data
+      ansible.builtin.command:
+        cmd: /opt/{{ script_file }}
+      changed_when: true
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+        INFLUXDB3_AUTH_TOKEN: "{{ token_result.stdout }}"
+
+- name: Verify data import
+  hosts: influxdb
+  tasks:
+    - name: Query total SumSalt
+      ansible.builtin.shell: |
+        influxdb3 query \
+          --database {{ login_db }} \
+          --format csv \
+          "SELECT sum(\"SumSalt\") FROM {{ collection }}" \
+        | sed -n '2p'
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+        INFLUXDB3_AUTH_TOKEN: "{{ token_result.stdout }}"
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.stdout | float }}"
+
+    - name: Display total SumSalt
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: influxdb
+  tasks:
+    - name: Save result if in master run
+      block:
+        - name: Ensure results directory exists
+          file:
+            path: "{{ results_dir }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: Save result to file
+          copy:
+            content: |
+              {
+                "db": "{{ vm_name }}",
+                "host": "{{ inventory_hostname }}",
+                "sum_salt": {{ result | to_json }}
+              }
+            dest: "{{ results_dir }}/{{ vm_name }}-{{ inventory_hostname }}.json"
+          delegate_to: localhost
+      when: is_master_run | default(false)
+      run_once: true
+
+    - name: Stop container
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: stopped
+      delegate_to: localhost

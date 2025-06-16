@@ -1,0 +1,29 @@
+---
+# VM VARS
+vm_name: clickhousedb
+vm_packages: "{{ packages_base +
+  [
+  'apt-transport-https',
+  'ca-certificates'
+  ]
+  }}"
+vm_config:
+  limits.memory: "2GiB"
+  limits.cpu: "1"
+
+vm_devices:
+  root:
+    type: disk
+    pool: default
+    path: /
+    size: 5GB
+
+vm_profiles: "{{ lxd_profiles_base + ['clickhousedb-net'] }}"
+
+# FILE VARS
+data_file: "raltra.csv"
+data_tar: "{{ data_file }}.tar.gz"
+
+# DB VARS
+collection: car_telemetry
+db_key_url: "https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key"

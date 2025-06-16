@@ -1,0 +1,277 @@
+---
+- name: Init MariaDB VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/mariadb.yml
+
+  tasks:
+    - name: Check if LXD VM exists
+      ansible.builtin.command:
+        cmd: "lxc info {{ vm_name }}"
+      register: vm_state
+      ignore_errors: true
+      changed_when: false
+
+    - name: Stop the VM
+      ansible.builtin.command:
+        cmd: "lxc stop {{ vm_name }} --force"
+      when: vm_state.rc == 0
+      ignore_errors: true
+      changed_when: false
+
+    - name: Delete LXD VM if it exists
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: absent
+      when: vm_state.rc == 0
+
+    - name: Launch LXD VM
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        type: "{{ lxd_type_base }}"
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: "{{ lxd_image_server_base }}"
+          protocol: "{{ lxd_image_protocol_base }}"
+          alias: "{{ lxd_image_base }}"
+        profiles: "{{ vm_profiles }}"
+        config: "{{ vm_config }}"
+        devices: "{{ vm_devices }}"
+        wait_for_ipv4_addresses: true
+        timeout: 600
+
+    - name: Wait for VM init
+      ansible.builtin.wait_for:
+        timeout: 10
+
+- name: Configure VM
+  hosts: mariadb
+  tasks:
+    - name: Create tmp directory
+      ansible.builtin.file:
+        path: "{{ ansible_remote_tmp }}"
+        state: directory
+        mode: "1777"
+
+    - name: Update system packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name: "{{ vm_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+- name: Setup database and import data
+  hosts: mariadb
+  tasks:
+    - name: Create database
+      community.mysql.mysql_db:
+        name: "{{ login_db }}"
+        state: present
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+
+    - name: Create table
+      community.mysql.mysql_query:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_db: "{{ login_db }}"
+        query: >
+          CREATE TABLE IF NOT EXISTS {{ collection }} (
+            id INT NOT NULL AUTO_INCREMENT,
+            orig_id INT DEFAULT NULL,
+            orig_time DATETIME DEFAULT NULL,
+            orig_topic VARCHAR(50) DEFAULT NULL,
+            CreatedTime DATETIME DEFAULT NULL,
+            GpsTime DATETIME DEFAULT NULL,
+            GsmSignal TINYINT UNSIGNED DEFAULT 0,
+            SatelliteCount SMALLINT UNSIGNED DEFAULT 0,
+            LicensePlate VARCHAR(20) DEFAULT NULL,
+            VehicleType TINYINT DEFAULT 0,
+            Company VARCHAR(50) DEFAULT NULL,
+            VehicleID INT DEFAULT 0,
+            Technology TINYINT DEFAULT 0,
+            Ignition TINYINT DEFAULT 0,
+            Longitude DECIMAL(9, 5) DEFAULT 0.0,
+            Latitude DECIMAL(8, 5) DEFAULT 0.0,
+            SpeedGps DECIMAL(6, 2) DEFAULT 0.00,
+            SpeedTach DECIMAL(6, 2) DEFAULT 0.00,
+            SpeedCan DECIMAL(6, 2) DEFAULT 0.00,
+            TachoGps DECIMAL(6, 2) DEFAULT 0.00,
+            TachoTach DECIMAL(6, 2) DEFAULT 0.00,
+            ModeDrive TINYINT DEFAULT 0,
+            SpreadingMode TINYINT DEFAULT 0,
+            Plow TINYINT DEFAULT 0,
+            Gram INT UNSIGNED DEFAULT 0,
+            WidthLeft DECIMAL(4, 2) DEFAULT 0.00,
+            WidthRight DECIMAL(4, 2) DEFAULT 0.00,
+            SumSalt DECIMAL(20,4) UNSIGNED DEFAULT 0,
+            SumInert DECIMAL(20,4) UNSIGNED DEFAULT 0,
+            SumBrine DECIMAL(20,4) UNSIGNED DEFAULT 0,
+            Cuts1 TINYINT DEFAULT 0,
+            Cuts2 TINYINT DEFAULT 0,
+            Cuts3 TINYINT DEFAULT 0,
+            CentralBroom TINYINT DEFAULT 0,
+            LeftBroom TINYINT DEFAULT 0,
+            RightBroom TINYINT DEFAULT 0,
+            Turbine TINYINT DEFAULT 0,
+            RunningShaft TINYINT DEFAULT 0,
+            LeftFlushing TINYINT DEFAULT 0,
+            RightFlushing TINYINT DEFAULT 0,
+            CentralFlushing TINYINT DEFAULT 0,
+            Misting TINYINT DEFAULT 0,
+            Pump TINYINT DEFAULT 0,
+            LightOn TINYINT DEFAULT 0,
+            ModeArrow TINYINT DEFAULT 0,
+            AkuVoltage DECIMAL(4, 2) DEFAULT 0.00,
+            RampUp TINYINT DEFAULT 0,
+            Crash TINYINT DEFAULT 0,
+            TempAir DECIMAL(6, 2) DEFAULT 0.00,
+            TempRoad DECIMAL(5, 2) DEFAULT 0.00,
+            Revs DECIMAL(20,4) UNSIGNED DEFAULT 0,
+            RevsExtension INT DEFAULT 0,
+            Fuel DECIMAL(6, 2) DEFAULT 0.00,
+            LevelPHM DECIMAL(6, 2) DEFAULT 0.00,
+            PowerVoltage DECIMAL(5, 2) DEFAULT 0.00,
+            Lighthouse TINYINT DEFAULT 0,
+            PRIMARY KEY (id)
+          )
+      changed_when: true
+
+    - name: Push and extract data
+      ansible.builtin.unarchive:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "/var/lib/mysql-files/"
+        mode: "0777"
+
+    - name: Import data
+      community.mysql.mysql_query:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_db: "{{ login_db }}"
+        query: >-
+          LOAD DATA INFILE '/var/lib/mysql-files/{{ data_file }}'
+          INTO TABLE {{ collection }}
+          FIELDS TERMINATED BY ','
+          ENCLOSED BY '"'
+          LINES TERMINATED BY '\n'
+          IGNORE 1 ROWS
+          (
+              orig_id,
+              @orig_time,
+              orig_topic,
+              @CreatedTime,
+              @GpsTime,
+              GsmSignal,
+              SatelliteCount,
+              LicensePlate,
+              VehicleType,
+              Company,
+              VehicleID,
+              Technology,
+              Ignition,
+              Longitude,
+              Latitude,
+              SpeedGps,
+              SpeedTach,
+              SpeedCan,
+              TachoGps,
+              TachoTach,
+              ModeDrive,
+              SpreadingMode,
+              Plow,
+              Gram,
+              WidthLeft,
+              WidthRight,
+              SumSalt,
+              SumInert,
+              SumBrine,
+              Cuts1,
+              Cuts2,
+              Cuts3,
+              CentralBroom,
+              LeftBroom,
+              RightBroom,
+              Turbine,
+              RunningShaft,
+              LeftFlushing,
+              RightFlushing,
+              CentralFlushing,
+              Misting,
+              Pump,
+              LightOn,
+              ModeArrow,
+              AkuVoltage,
+              RampUp,
+              Crash,
+              TempAir,
+              TempRoad,
+              Revs,
+              RevsExtension,
+              Fuel,
+              LevelPHM,
+              PowerVoltage,
+              Lighthouse
+            )
+            SET
+              orig_time   = STR_TO_DATE(@orig_time, '%Y-%m-%dT%H:%i:%s.%f'),
+              CreatedTime = STR_TO_DATE(@CreatedTime, '%Y-%m-%dT%H:%i:%s.%f'),
+              GpsTime     = STR_TO_DATE(@GpsTime, '%Y-%m-%dT%H:%i:%s.%f');
+      changed_when: true
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: /var/lib/mysql-files/{{ data_file }}
+        state: absent
+
+- name: Verify data import
+  hosts: mariadb
+  tasks:
+    - name: Query total SumSalt
+      community.mysql.mysql_query:
+        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_db: "{{ login_db }}"
+        query: "SELECT CAST(SUM(SumSalt * 1.0) AS DOUBLE) AS TotalSalt FROM {{ collection }};"
+      register: query_result
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.query_result[0][0]['TotalSalt'] | float }}"
+
+    - name: Display total SumSalt
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: mariadb
+  tasks:
+    - name: Save result if in master run
+      block:
+        - name: Ensure results directory exists
+          file:
+            path: "{{ results_dir }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: Save result to file
+          copy:
+            content: |
+              {
+                "db": "{{ vm_name }}",
+                "host": "{{ inventory_hostname }}",
+                "sum_salt": {{ result | to_json }}
+              }
+            dest: "{{ results_dir }}/{{ vm_name }}-{{ inventory_hostname }}.json"
+          delegate_to: localhost
+      when: is_master_run | default(false)
+      run_once: true
+
+    - name: Stop container
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: stopped
+      delegate_to: localhost

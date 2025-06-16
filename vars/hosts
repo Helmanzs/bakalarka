@@ -1,0 +1,10 @@
+[databases]
+mariadb
+questdb
+opentsdb
+influxdb
+iotdb
+clickhousedb
+timescaledb
+columnstoredb
+mongodb

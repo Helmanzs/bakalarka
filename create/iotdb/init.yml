@@ -1,0 +1,309 @@
+---
+- name: Init IoTDB VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/iotdb.yml
+
+  tasks:
+    - name: Check if LXD VM exists
+      ansible.builtin.command:
+        cmd: "lxc info {{ vm_name }}"
+      register: vm_state
+      ignore_errors: true
+      changed_when: false
+
+    - name: Stop the VM
+      ansible.builtin.command:
+        cmd: "lxc stop {{ vm_name }} --force"
+      when: vm_state.rc == 0
+      ignore_errors: true
+      changed_when: false
+
+    - name: Delete LXD VM if it exists
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: absent
+      when: vm_state.rc == 0
+
+    - name: Launch LXD VM
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        type: "{{ lxd_type_base }}"
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: "{{ lxd_image_server_base }}"
+          protocol: "{{ lxd_image_protocol_base }}"
+          alias: "{{ lxd_image_base }}"
+        profiles: "{{ vm_profiles }}"
+        config: "{{ vm_config }}"
+        devices: "{{ vm_devices }}"
+        wait_for_ipv4_addresses: true
+        timeout: 600
+
+    - name: Wait for VM init
+      ansible.builtin.wait_for:
+        timeout: 10
+
+- name: Configure VM
+  hosts: iotdb
+  tasks:
+    - name: Create tmp directory
+      ansible.builtin.file:
+        path: "{{ ansible_remote_tmp }}"
+        state: directory
+        mode: "1777"
+
+    - name: Update system packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name: "{{ vm_packages }}"
+        state: present
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Install Apache IoTDB
+      ansible.builtin.pip:
+        name: apache-iotdb
+        executable: pip3
+        extra_args: --break-system-packages
+
+    - name: Disable UFW
+      ansible.builtin.service:
+        name: ufw
+        state: stopped
+        enabled: false
+
+    - name: Configure sysctl parameters
+      ansible.builtin.copy:
+        dest: /etc/sysctl.conf
+        content: |
+          # BEGIN ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+          {% for item in vm_sysctl_params %}
+          {{ item.name }} = {{ item.value }}
+          {% endfor %}
+          # END ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+
+    - name: Apply sysctl settings
+      ansible.builtin.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+        sysctl_set: yes
+      loop: "{{ vm_sysctl_params }}"
+
+    - name: Temporarily disable and re-enable swap
+      block:
+        - name: Disable swap
+          ansible.builtin.command: swapoff -a
+          register: swapoff_result
+          failed_when:
+            - swapoff_result.rc != 0
+            - "'swapoff: not found' not in swapoff_result.stderr"
+          changed_when: true
+
+        - name: Enable swap
+          ansible.builtin.command: swapon -a
+          register: swapon_result
+          failed_when:
+            - swapon_result.rc != 0
+            - "'swapon: not found' not in swapon_result.stderr"
+          changed_when: true
+
+    - name: Configure file limits
+      ansible.builtin.blockinfile:
+        path: /etc/security/limits.conf
+        block: "{{ vm_file_limits }}"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - FILE LIMITS"
+
+    - name: Set JAVA_HOME in bashrc
+      ansible.builtin.blockinfile:
+        path: ~/.bashrc
+        block: |
+          export JAVA_HOME={{ vm_openjdk_path }}
+          export PATH=$JAVA_HOME/bin:$PATH
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - JAVA CONFIG"
+
+    - name: Source bashrc
+      ansible.builtin.shell: source ~/.bashrc
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Apply network settings
+      ansible.builtin.command:
+        cmd: sysctl -p
+      changed_when: true
+
+- name: Install and Configure IoTDB
+  hosts: iotdb
+  tasks:
+    - name: Download IoTDB
+      ansible.builtin.get_url:
+        url: "{{ db_zip_url }}"
+        dest: /opt/apache-iotdb-2.0.3-all-bin.zip
+        mode: "0644"
+
+    - name: Extract IoTDB
+      ansible.builtin.unarchive:
+        src: /opt/apache-iotdb-2.0.3-all-bin.zip
+        dest: /opt/
+        remote_src: true
+
+    - name: Remove IoTDB zip file
+      ansible.builtin.file:
+        path: /opt/apache-iotdb-2.0.3-all-bin.zip
+        state: absent
+
+    - name: Create symbolic link
+      ansible.builtin.file:
+        src: /opt/apache-iotdb-2.0.3-all-bin/
+        dest: /iotdb
+        state: link
+
+    - name: Configure ConfigNode memory
+      ansible.builtin.lineinfile:
+        path: /iotdb/conf/confignode-env.sh
+        line: 'MAX_HEAP_SIZE="{{ confignode_heap_size }}"'
+        state: present
+
+    - name: Configure DataNode memory
+      ansible.builtin.lineinfile:
+        path: /iotdb/conf/datanode-env.sh
+        line: 'MAX_HEAP_SIZE="{{ datanode_heap_size }}"'
+        state: present
+
+    - name: Configure IoTDB system properties
+      ansible.builtin.replace:
+        path: /iotdb/conf/iotdb-system.properties
+        regexp: "^cluster_name=.*"
+        replace: "cluster_name={{ iotdb_cluster_name }}"
+
+    - name: Configure ConfigNode internal address
+      ansible.builtin.replace:
+        path: /iotdb/conf/iotdb-system.properties
+        regexp: "^cn_internal_address=.*"
+        replace: "cn_internal_address={{ iotdb_cn_internal_address }}"
+
+    - name: Configure DataNode RPC address
+      ansible.builtin.replace:
+        path: /iotdb/conf/iotdb-system.properties
+        regexp: "^dn_rpc_address=.*"
+        replace: "dn_rpc_address={{ iotdb_dn_rpc_address }}"
+
+    - name: Configure DataNode internal address
+      ansible.builtin.replace:
+        path: /iotdb/conf/iotdb-system.properties
+        regexp: "^dn_internal_address=.*"
+        replace: "dn_internal_address={{ iotdb_dn_internal_address }}"
+
+    - name: Create data directory
+      ansible.builtin.file:
+        path: /data/iotdb
+        state: directory
+        mode: "0755"
+
+    - name: Start ConfigNode
+      ansible.builtin.command: /iotdb/sbin/start-confignode.sh -d
+      changed_when: false
+
+    - name: Start DataNode
+      ansible.builtin.command: /iotdb/sbin/start-datanode.sh -d
+      changed_when: false
+
+    - name: Wait for IoTDB RPC service to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 5
+        timeout: 60
+
+- name: Setup database and import data
+  hosts: iotdb
+  tasks:
+    - name: Deploy processing scripts
+      ansible.builtin.copy:
+        src: "{{ ansible_scripts_dir }}/{{ script_file }}"
+        dest: "/opt/"
+        mode: "0777"
+
+    - name: Push and extract data
+      ansible.builtin.unarchive:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "/tmp/"
+        mode: "0777"
+
+    - name: Import data
+      ansible.builtin.command: >
+        /iotdb/tools/import-data.sh
+        -ft csv
+        -h localhost
+        -p 6667
+        -u root
+        -pw root
+        -s /tmp/{{ data_file }}
+        -fd /tmp/failed_rows/
+        -aligned true
+        -tn 4
+        -tz +02:00
+      changed_when: false
+
+- name: Verify data import
+  hosts: iotdb
+  tasks:
+    - name: Query total SumSalt
+      ansible.builtin.command: >
+        /iotdb/sbin/start-cli.sh
+        -h 127.0.0.1
+        -p {{ db_port }}
+        -u {{ db_user }}
+        -pw {{ db_password }}
+        -e "SELECT sum(SumSalt) from root.sus_uk.vehicle_* GROUP BY LEVEL=0;"
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ (query_result.stdout_lines[3]
+          | regex_replace('[^0-9Ee+\\-.]', '')
+          ) | float }}"
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: "{{  result }}"
+
+- name: Post processing
+  hosts: iotdb
+  tasks:
+    - name: Save result if in master run
+      block:
+        - name: Ensure results directory exists
+          file:
+            path: "{{ results_dir }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: Save result to file
+          copy:
+            content: |
+              {
+                "db": "{{ vm_name }}",
+                "host": "{{ inventory_hostname }}",
+                "sum_salt": {{ result | to_json }}
+              }
+            dest: "{{ results_dir }}/{{ vm_name }}-{{ inventory_hostname }}.json"
+          delegate_to: localhost
+      when: is_master_run | default(false)
+      run_once: true
+
+    - name: Stop container
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: stopped
+      delegate_to: localhost

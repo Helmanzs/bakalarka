@@ -1,0 +1,204 @@
+lxc launch ubuntu:24.04 mariadb --vm
+lxc exec mariadb -- bash
+sudo apt update
+sudo apt-get update
+sudo apt upgrade
+sudo apt install mysql-server
+exit
+lxc config device add mariadb shared disk source=~/data path=/var/lib/mysql-files
+lxc exec mariadb -- bash
+mysql --local-infile=1 -u root -p
+create database if not exists raltra;
+use raltra;
+CREATE TABLE car_telemetry (
+    id INT NOT NULL AUTO_INCREMENT,
+    orig_id INT DEFAULT NULL,
+    orig_time DATETIME DEFAULT NULL,
+    orig_topic VARCHAR(255) DEFAULT NULL,
+    CreatedTime DATETIME DEFAULT NULL,
+    GpsTime DATETIME DEFAULT NULL,
+    GsmSignal INT DEFAULT 0,
+    SatelliteCount INT DEFAULT 0,
+    LicensePlate VARCHAR(20) DEFAULT NULL,
+    VehicleType INT DEFAULT 0,
+    Company VARCHAR(50) DEFAULT NULL,
+    VehicleID INT DEFAULT 0,
+    Technology INT DEFAULT 0,
+    Ignition INT DEFAULT 0,
+    Longitude DECIMAL(10, 7) DEFAULT 0.0,
+    Latitude DECIMAL(10, 7) DEFAULT 0.0,
+    SpeedGps DECIMAL(10, 2) DEFAULT 0.00,
+    SpeedTach DECIMAL(10, 2) DEFAULT 0.00,
+    SpeedCan DECIMAL(10, 2) DEFAULT 0.00,
+    TachoGps DECIMAL(10, 2) DEFAULT 0.00,
+    TachoTach DECIMAL(10, 2) DEFAULT 0.00,
+    ModeDrive INT DEFAULT 0,
+    SpreadingMode INT DEFAULT 0,
+    Plow INT DEFAULT 0,
+    Gram INT DEFAULT 0,
+    WidthLeft DECIMAL(5, 2) DEFAULT 0.00,
+    WidthRight DECIMAL(5, 2) DEFAULT 0.00,
+    SumSalt DECIMAL(15, 8) DEFAULT 0.0,
+    SumInert DECIMAL(15, 8) DEFAULT 0.0,
+    SumBrine DECIMAL(20, 8) DEFAULT 0.0,
+    Cuts1 INT DEFAULT 0,
+    Cuts2 INT DEFAULT 0,
+    Cuts3 INT DEFAULT 0,
+    CentralBroom INT DEFAULT 0,
+    LeftBroom INT DEFAULT 0,
+    RightBroom INT DEFAULT 0,
+    Turbine INT DEFAULT 0,
+    RunningShaft INT DEFAULT 0,
+    LeftFlushing INT DEFAULT 0,
+    RightFlushing INT DEFAULT 0,
+    CentralFlushing INT DEFAULT 0,
+    Misting INT DEFAULT 0,
+    Pump INT DEFAULT 0,
+    LightOn INT DEFAULT 0,
+    ModeArrow INT DEFAULT 0,
+    AkuVoltage DECIMAL(5, 2) DEFAULT 0.00,
+    RampUp INT DEFAULT 0,
+    Crash INT DEFAULT 0,
+    TempAir DECIMAL(5, 2) DEFAULT 0.00,
+    TempRoad DECIMAL(5, 2) DEFAULT 0.00,
+    Revs DECIMAL(15, 6) DEFAULT 0.0,
+    RevsExtension INT DEFAULT 0,
+    Fuel DECIMAL(5, 2) DEFAULT 0.00,
+    LevelPHM DECIMAL(5, 2) DEFAULT 0.00,
+    PowerVoltage DECIMAL(5, 2) DEFAULT 0.00,
+    Lighthouse INT DEFAULT 0,
+    PRIMARY KEY (id)
+);
+
+LOAD DATA INFILE '/var/lib/mysql-files/raltra_export.csv'
+INTO TABLE telemetry
+FIELDS TERMINATED BY ',' 
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 LINES
+(
+  @csv_id,                -- CSV Column 1: Original ID (mapped to orig_id)
+  @orig_id,               -- CSV Column 2: orig_id (already matches column name)
+  @orig_time,             -- CSV Column 3: DateTime with 'T' separator
+  @orig_topic,            -- CSV Column 4
+  @CreatedTime,           -- CSV Column 5
+  @GpsTime,               -- CSV Column 6
+  @GsmSignal,             -- CSV Column 7
+  @SatelliteCount,        -- CSV Column 8
+  @LicensePlate,          -- CSV Column 9
+  @VehicleType,           -- CSV Column 10
+  @Company,               -- CSV Column 11
+  @VehicleID,             -- CSV Column 12
+  @Technology,            -- CSV Column 13
+  @Ignition,              -- CSV Column 14
+  @Longitude,             -- CSV Column 15
+  @Latitude,              -- CSV Column 16
+  @SpeedGps,              -- CSV Column 17
+  @SpeedTach,             -- CSV Column 18
+  @SpeedCan,              -- CSV Column 19
+  @TachoGps,              -- CSV Column 20
+  @TachoTach,             -- CSV Column 21
+  @ModeDrive,             -- CSV Column 22
+  @SpreadingMode,         -- CSV Column 23
+  @Plow,                  -- CSV Column 24
+  @Gram,                  -- CSV Column 25
+  @WidthLeft,             -- CSV Column 26
+  @WidthRight,            -- CSV Column 27
+  @SumSalt,               -- CSV Column 28
+  @SumInert,              -- CSV Column 29
+  @SumBrine,              -- CSV Column 30
+  @Cuts1,                 -- CSV Column 31
+  @Cuts2,                 -- CSV Column 32
+  @Cuts3,                 -- CSV Column 33
+  @CentralBroom,          -- CSV Column 34
+  @LeftBroom,             -- CSV Column 35
+  @RightBroom,            -- CSV Column 36
+  @Turbine,               -- CSV Column 37
+  @RunningShaft,          -- CSV Column 38
+  @LeftFlushing,          -- CSV Column 39
+  @RightFlushing,         -- CSV Column 40
+  @CentralFlushing,       -- CSV Column 41
+  @Misting,               -- CSV Column 42
+  @Pump,                  -- CSV Column 43
+  @LightOn,               -- CSV Column 44
+  @ModeArrow,             -- CSV Column 45
+  @AkuVoltage,            -- CSV Column 46
+  @RampUp,                -- CSV Column 47
+  @Crash,                 -- CSV Column 48
+  @TempAir,               -- CSV Column 49
+  @TempRoad,              -- CSV Column 50
+  @Revs,                  -- CSV Column 51
+  @RevsExtension,         -- CSV Column 52
+  @Fuel,                  -- CSV Column 53
+  @LevelPHM,              -- CSV Column 54
+  @PowerVoltage,          -- CSV Column 55
+  @Lighthouse             -- CSV Column 56
+)
+SET
+  orig_id = NULLIF(@orig_id, ''),
+  orig_time = STR_TO_DATE(NULLIF(@orig_time, ''), '%Y-%m-%dT%T.%f'),
+  orig_topic = NULLIF(@orig_topic, ''),
+  CreatedTime = STR_TO_DATE(NULLIF(@CreatedTime, ''), '%Y-%m-%dT%T.%f'),
+  GpsTime = STR_TO_DATE(NULLIF(@GpsTime, ''), '%Y-%m-%dT%T.%f'),
+  LicensePlate = NULLIF(@LicensePlate, ''),
+  Company = NULLIF(@Company, ''),
+  
+  -- Your existing numeric/boolean field handling:
+  GsmSignal = IF(@GsmSignal = '', 0, @GsmSignal),
+  SatelliteCount = IF(@SatelliteCount = '', 0, @SatelliteCount),
+  VehicleType = IF(@VehicleType = '', 0, @VehicleType),
+  VehicleID = IF(@VehicleID = '', 0, @VehicleID),
+  Technology = IF(@Technology = '', 0, @Technology),
+  Ignition = IF(@Ignition = '', 0, @Ignition),
+  Longitude = IF(@Longitude = '', 0.0, @Longitude),
+  Latitude = IF(@Latitude = '', 0.0, @Latitude),
+  SpeedGps = IF(@SpeedGps = '', 0.00, @SpeedGps),
+  SpeedTach = IF(@SpeedTach = '', 0.00, @SpeedTach),
+  SpeedCan = IF(@SpeedCan = '', 0.00, @SpeedCan),
+  TachoGps = IF(@TachoGps = '', 0.00, @TachoGps),
+  TachoTach = IF(@TachoTach = '', 0.00, @TachoTach),
+  ModeDrive = IF(@ModeDrive = '', 0, @ModeDrive),
+  SpreadingMode = IF(@SpreadingMode = '', 0, @SpreadingMode),
+  Plow = IF(@Plow = '', 0, @Plow),
+  Gram = IF(@Gram = '', 0, @Gram),
+  WidthLeft = IF(@WidthLeft = '', 0.00, @WidthLeft),
+  WidthRight = IF(@WidthRight = '', 0.00, @WidthRight),
+  SumSalt = IF(@SumSalt = '', 0.0, @SumSalt),
+  SumInert = IF(@SumInert = '', 0.0, @SumInert),
+  SumBrine = IF(@SumBrine = '', 0.0, @SumBrine),
+  Cuts1 = IF(@Cuts1 = '', 0, @Cuts1),
+  Cuts2 = IF(@Cuts2 = '', 0, @Cuts2),
+  Cuts3 = IF(@Cuts3 = '', 0, @Cuts3),
+  CentralBroom = IF(@CentralBroom = '', 0, @CentralBroom),
+  LeftBroom = IF(@LeftBroom = '', 0, @LeftBroom),
+  RightBroom = IF(@RightBroom = '', 0, @RightBroom),
+  Turbine = IF(@Turbine = '', 0, @Turbine),
+  RunningShaft = IF(@RunningShaft = '', 0, @RunningShaft),
+  LeftFlushing = IF(@LeftFlushing = '', 0, @LeftFlushing),
+  RightFlushing = IF(@RightFlushing = '', 0, @RightFlushing),
+  CentralFlushing = IF(@CentralFlushing = '', 0, @CentralFlushing),
+  Misting = IF(@Misting = '', 0, @Misting),
+  Pump = IF(@Pump = '', 0, @Pump),
+  LightOn = IF(@LightOn = '', 0, @LightOn),
+  ModeArrow = IF(@ModeArrow = '', 0, @ModeArrow),
+  AkuVoltage = IF(@AkuVoltage = '', 0.00, @AkuVoltage),
+  RampUp = IF(@RampUp = '', 0, @RampUp),
+  Crash = IF(@Crash = '', 0, @Crash),
+  TempAir = IF(@TempAir = '', 0.00, @TempAir),
+  TempRoad = IF(@TempRoad = '', 0.00, @TempRoad),
+  Revs = IF(@Revs = '', 0.0, @Revs),
+  RevsExtension = IF(@RevsExtension = '', 0, @RevsExtension),
+  Fuel = IF(@Fuel = '', 0.00, @Fuel),
+  LevelPHM = IF(@LevelPHM = '', 0.00, @LevelPHM),
+  PowerVoltage = IF(@PowerVoltage = '', 0.00, @PowerVoltage),
+  Lighthouse = IF(@Lighthouse = '', 0, @Lighthouse),
+  
+  -- Auto-increment ID should be omitted or set to NULL
+  id = NULL;
+
+
+no-changed-when: Commands should not change things if nothing needs doing.
+init.yml:112 Task/Handler: Move data to mysql
+
+no-changed-when: Commands should not change things if nothing needs doing.
+init.yml:188 Task/Handler: Remove import file

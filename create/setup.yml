@@ -1,0 +1,61 @@
+---
+- name: Setup environment
+  import_playbook: init_ansible_env.yml
+
+- name: Initialize results system
+  hosts: localhost
+  tasks:
+    - name: Create results directory
+      tempfile:
+        state: directory
+        suffix: "_results"
+      register: results_dir
+
+    - name: Set global results path
+      set_fact:
+        global_results_dir: "{{ results_dir.path }}"
+        is_master_run: true
+
+- name: Run database setups and collect results
+  hosts: localhost
+  tasks:
+    - name: Import database playbooks
+      include_tasks: .init_dbs.yml
+
+- name: Display aggregated results
+  hosts: localhost
+  tasks:
+    - name: Find result files
+      find:
+        paths: "{{ global_results_dir }}"
+        patterns: "*.json"
+        file_type: file
+      register: found_files
+
+    - name: Set empty list if no files
+      set_fact:
+        all_results: []
+      when: found_files.matched == 0
+
+    - name: Read and parse result files
+      block:
+        - name: Read each file
+          slurp:
+            src: "{{ item.path }}"
+          loop: "{{ found_files.files | map(attribute='path') | list }}"
+          register: result_contents
+
+        - name: Extract and parse content
+          set_fact:
+            all_results: "{{ result_contents.results | map(attribute='content') | map('b64decode') | map('from_json') | list }}"
+      when: found_files.matched > 0
+
+    - name: Show all results
+      debug:
+        msg: "{{ item.db }} ({{ item.host }}): {{ item.sum_salt }}"
+      loop: "{{ all_results | default([]) }}"
+
+    - name: Cleanup results directory
+      file:
+        path: "{{ global_results_dir }}"
+        state: absent

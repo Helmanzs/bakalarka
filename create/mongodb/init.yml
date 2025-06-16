@@ -1,0 +1,201 @@
+---
+- name: Init MongoDB VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/mongodb.yml
+
+  tasks:
+    - name: Check if LXD VM exists
+      ansible.builtin.command:
+        cmd: "lxc info {{ vm_name }}"
+      register: vm_state
+      ignore_errors: true
+      changed_when: false
+
+    - name: Stop the VM
+      ansible.builtin.command:
+        cmd: "lxc stop {{ vm_name }} --force"
+      when: vm_state.rc == 0
+      ignore_errors: true
+      changed_when: false
+
+    - name: Delete LXD VM if it exists
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: absent
+      when: vm_state.rc == 0
+
+    - name: Launch LXD VM
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        type: "{{ lxd_type_base }}"
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: "{{ lxd_image_server_base }}"
+          protocol: "{{ lxd_image_protocol_base }}"
+          alias: "{{ lxd_image_base }}"
+        profiles: "{{ vm_profiles }}"
+        config: "{{ vm_config }}"
+        devices: "{{ vm_devices }}"
+        wait_for_ipv4_addresses: true
+        timeout: 600
+
+    - name: Wait for VM init
+      ansible.builtin.wait_for:
+        timeout: 10
+
+- name: Configure VM
+  hosts: mongodb
+  tasks:
+    - name: Create tmp directory
+      ansible.builtin.file:
+        path: "{{ ansible_remote_tmp }}"
+        state: directory
+        mode: "1777"
+
+    - name: Update system packages
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name: "{{ vm_packages }}"
+        state: present
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+- name: Install and configure MongoDB
+  hosts: mongodb
+  tasks:
+    - name: Download GPG key
+      ansible.builtin.apt_key:
+        url: "{{ gpg_key_url }}"
+        keyring: /usr/share/keyrings/mongodb-server-8.0.gpg
+        state: present
+        validate_certs: yes
+
+    - name: Add repository
+      ansible.builtin.apt_repository:
+        repo: >
+          deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg]
+          https://repo.mongodb.org/apt/ubuntu 
+          {{ ansible_distribution_release | lower }}/mongodb-org/8.0 
+          multiverse
+        filename: mongodb-org-8.0.list
+        update_cache: true
+      # ansible-lint: disable=line-length
+
+    - name: Install MongoDB
+      ansible.builtin.apt:
+        name: mongodb-org
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Start MongoDB service
+      ansible.builtin.service:
+        name: mongod
+        state: started
+        enabled: true
+
+- name: Setup database and import data
+  hosts: mongodb
+  tasks:
+    - name: Create database
+      community.mongodb.mongodb_shell:
+        login_host: "{{ login_host }}"
+        login_port: "{{ login_port }}"
+        db: "{{ login_db }}"
+        eval: |
+          db.createCollection('{{ collection }}', {
+            timeseries: {
+              timeField: "GpsTime",
+              metaField: "VehicleID",
+              granularity: "seconds"
+            }
+          })
+
+    - name: Push and extract data
+      ansible.builtin.unarchive:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "/tmp/"
+        mode: "0777"
+
+    - name: Import JSON data
+      ansible.builtin.command:
+        argv:
+          - mongoimport
+          - --uri=mongodb://{{ login_host }}:{{ login_port }}/{{ login_db }}
+          - --collection={{ collection }}
+          - --file=/tmp/{{ data_file }}
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: /tmp/{{ data_file }}
+        state: absent
+
+- name: Verify data import
+  hosts: mongodb
+  tasks:
+    - name: Query total SumSalt
+      community.mongodb.mongodb_shell:
+        login_host: "{{ login_host }}"
+        login_port: "{{ login_port }}"
+        db: "{{ login_db }}"
+        eval: |
+          db.{{ collection }}.aggregate([
+            {
+              $group: {
+                _id: null,
+                totalSumSalt: { $sum: "$SumSalt" }
+              }
+            }
+          ]).toArray()
+        transform: json
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.transformed_output[0].totalSumSalt }}"
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: mongodb
+  tasks:
+    - name: Save result if in master run
+      block:
+        - name: Ensure results directory exists
+          file:
+            path: "{{ results_dir }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: Save result to file
+          copy:
+            content: |
+              {
+                "db": "{{ vm_name }}",
+                "host": "{{ inventory_hostname }}",
+                "sum_salt": {{ result | to_json }}
+              }
+            dest: "{{ results_dir }}/{{ vm_name }}-{{ inventory_hostname }}.json"
+          delegate_to: localhost
+      when: is_master_run | default(false)
+      run_once: true
+
+    - name: Stop container
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: stopped
+      delegate_to: localhost

@@ -1,0 +1,42 @@
+lxc launch ubuntu:24.04 iotdb --vm --profile default --profile iotdb-net -c limits.memory=4GiB
+lxc file push ~/playbook/create/iotdb/data/raltra.csv iotdb/tmp/
+lxc exec iotdb -- bash
+apt update && sudo apt upgrade -y
+apt install micro openjdk-17-jdk unzip -y
+ufw disable
+sed -i '/^\s*vm\.swappiness\s*=/d' /etc/sysctl.conf && echo 'vm.swappiness=0' | tee -a /etc/sysctl.conf > /dev/null
+sysctl -p && swapoff -a && swapon -a
+sed -i '/^\s*\*\s\+\(soft\|hard\)\s\+nofile\s\+/d' /etc/security/limits.conf
+echo -e "* soft nofile 65535\n* hard nofile 65535" | tee -a /etc/security/limits.conf > /dev/null
+echo "export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> ~/.bashrc
+echo "export PATH=\$JAVA_HOME/bin:\$PATH" >> ~/.bashrc
+source ~/.bashrc
+echo 'net.core.somaxconn = 65535' >> /etc/sysctl.conf && sysctl -p
+
+wget -P /opt/ https://downloads.apache.org/iotdb/2.0.3/apache-iotdb-2.0.3-all-bin.zip
+unzip -d /opt/ /opt/apache-iotdb-2.0.3-all-bin.zip
+rm /opt/apache-iotdb-2.0.3-all-bin.zip
+ln -s /opt/apache-iotdb-2.0.3-all-bin/ /iotdb
+echo "MAX_HEAP_SIZE=\"1G\"" >> /iotdb/conf/confignode-env.sh
+echo "MAX_HEAP_SIZE=\"2G\"" >> /iotdb/conf/datanode-env.sh
+
+mkdir -p /data/iotdbsed -i 's/^cluster_name=.*/cluster_name=perfTestCluster/' /iotdb/conf/iotdb-system.properties
+sed -i 's/^cn_internal_address=.*/cn_internal_address=localhost/' /iotdb/conf/iotdb-system.properties
+sed -i 's/^dn_rpc_address=.*/dn_rpc_address=0.0.0.0/' /iotdb/conf/iotdb-system.properties
+sed -i 's/^dn_internal_address=.*/dn_internal_address=localhost/' /iotdb/conf/iotdb-system.properties
+/iotdb/sbin/start-confignode.sh -d
+/iotdb/sbin/start-datanode.sh -d
+/iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root -e "SET STORAGE GROUP TO root.car_telemetry;"
+/iotdb/tools/import-data.sh -ft csv -h 127.0.0.1 -p 6667 -u root -pw root -s /tmp/raltra.csv -fd /data/failed_imports -aligned false -tp ms -batch 50000 -tn 4
+
+/iotdb/tools/import-data.sh -ft csv -h 127.0.0.1 -p 6667 -u root -pw root -s /tmp/raltra.csv 
+      -fd /data/failed_imports -lpf 100  -aligned true -ti "BOOLEAN=text,INT=long,FLOAT=double" 
+      -tp ms -tz +01:00 -batch 5000  -tn 4
+
+/iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root -e "SELECT sum(SumSalt) from root.car_telemetry;"
+/iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root -e "SELECT count(SumSalt) from root.car_telemetry;"
+
+/iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root -e "SELECT count(SumSalt) from root.car_telemetry;"
+/iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root -e "SELECT * FROM root.sus_uk.vehicle_186 LIMIT 10;"
+
+/iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -u root -pw root -e "DELETE TIMESERIES root.car_telemetry.**;"

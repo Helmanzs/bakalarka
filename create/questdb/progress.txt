@@ -1,0 +1,87 @@
+lxc launch ubuntu:24.04 questdb --vm --profile default --profile questdb-net
+lxc file push data/raltra.csv.tar.gz questdb/tmp/
+
+lxc exec questdb -- bash
+apt update && apt upgrade -y
+apt install postgresql-client -y
+
+wget https://github.com/questdb/questdb/releases/download/8.3.3/questdb-8.3.3-rt-linux-x86-64.tar.gz -O questdb.tar.gz
+tar -xvf questdb.tar.gz 
+rm questdb.tar.gz 
+mv questdb-8.3.3-rt-linux-x86-64 questdb
+
+questdb/bin/questdb.sh start
+
+PGPASSWORD=quest psql -h localhost -p 8812 -U admin -d qdb -c "
+CREATE TABLE car_telemetry (
+    orig_id          INT,
+    orig_time        TIMESTAMP,
+    orig_topic       STRING,
+    CreatedTime      TIMESTAMP,
+    GpsTime          TIMESTAMP,
+    GsmSignal        INT,
+    SatelliteCount   INT,
+    LicensePlate     STRING,
+    VehicleType      INT,
+    Company          STRING,
+    VehicleID        INT,
+    Technology       INT,
+    Ignition         INT,
+    Longitude        DOUBLE,
+    Latitude         DOUBLE,
+    SpeedGps         DOUBLE,
+    SpeedTach        DOUBLE,
+    SpeedCan         DOUBLE,
+    TachoGps         DOUBLE,
+    TachoTach        DOUBLE,
+    ModeDrive        INT,
+    SpreadingMode    INT,
+    Plow             INT,
+    Gram             INT,
+    WidthLeft        DOUBLE,
+    WidthRight       DOUBLE,
+    SumSalt          DOUBLE,
+    SumInert         DOUBLE,
+    SumBrine         DOUBLE,
+    Cuts1            INT,
+    Cuts2            INT,
+    Cuts3            INT,
+    CentralBroom     INT,
+    LeftBroom        INT,
+    RightBroom       INT,
+    Turbine          INT,
+    RunningShaft     INT,
+    LeftFlushing     INT,
+    RightFlushing    INT,
+    CentralFlushing  INT,
+    Misting          INT,
+    Pump             INT,
+    LightOn          INT,
+    ModeArrow        INT,
+    AkuVoltage       DOUBLE,
+    RampUp           INT,
+    Crash            INT,
+    TempAir          DOUBLE,
+    TempRoad         DOUBLE,
+    Revs             DOUBLE,
+    RevsExtension    INT,
+    Fuel             DOUBLE,
+    LevelPHM         DOUBLE,
+    PowerVoltage     DOUBLE,
+    Lighthouse       INT
+) TIMESTAMP(orig_time) PARTITION BY DAY;
+"
+
+tar -xvf /tmp/raltra.csv.tar.gz -C ~/.questdb/import
+rm /tmp/raltra.csv.tar.gz
+
+PGPASSWORD=quest psql -h localhost -p 8812 -U admin -d qdb \
+  -c "COPY car_telemetry FROM 'raltra.csv' \
+      WITH HEADER true \
+      TIMESTAMP 'orig_time';"  
+
+PGPASSWORD=quest psql -h localhost -p 8812 -U admin -d qdb \
+  -c "SELECT sum(sumsalt) FROM 'car_telemetry';"
+
+PGPASSWORD=quest psql -h localhost -p 8812 -U admin -d qdb \
+  -c "SELECT * FROM 'car_telemetry' limit 2;"

@@ -1,0 +1,39 @@
+---
+# VM VARS
+vm_name: timescaledb
+vm_packages: "{{ packages_base +
+  [
+  'gnupg',
+  'postgresql-common',
+  'apt-transport-https',
+  'lsb-release',
+  'software-properties-common',
+  'python3-psycopg2'
+  ]
+  }}"
+vm_config:
+  limits.memory: "2GiB"
+  limits.cpu: "1"
+
+vm_devices:
+  root:
+    type: disk
+    pool: default
+    path: /
+    size: 8GB
+
+vm_profiles: "{{ lxd_profiles_base + ['timescaledb-net'] }}"
+
+# FILE VARS
+data_file: "raltra.csv"
+data_tar: "{{ data_file }}.tar.gz"
+script_file: ""
+
+# DB VARS
+gpg_key_url: "https://packagecloud.io/timescale/timescaledb/gpgkey"
+db_port: 8812
+db_host: localhost
+db_user: postgres
+db_password: quest
+login_db: postgres
+collection: car_telemetry

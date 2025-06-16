@@ -1,0 +1,240 @@
+---
+- name: Init ClickHouse VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/clickhousedb.yml
+
+  tasks:
+    - name: Check if LXD VM exists
+      ansible.builtin.command:
+        cmd: "lxc info {{ vm_name }}"
+      register: vm_state
+      ignore_errors: true
+      changed_when: false
+
+    - name: Stop the VM
+      ansible.builtin.command:
+        cmd: "lxc stop {{ vm_name }} --force"
+      when: vm_state.rc == 0
+      ignore_errors: true
+      changed_when: false
+
+    - name: Delete LXD VM if it exists
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: absent
+      when: vm_state.rc == 0
+
+    - name: Launch LXD VM
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        type: "{{ lxd_type_base }}"
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: "{{ lxd_image_server_base }}"
+          protocol: "{{ lxd_image_protocol_base }}"
+          alias: "{{ lxd_image_base }}"
+        profiles: "{{ vm_profiles }}"
+        config: "{{ vm_config }}"
+        devices: "{{ vm_devices }}"
+        wait_for_ipv4_addresses: true
+        timeout: 600
+
+    - name: Wait for VM init
+      ansible.builtin.wait_for:
+        timeout: 10
+
+- name: Configure VM
+  hosts: clickhousedb
+  tasks:
+    - name: Create tmp directory
+      ansible.builtin.file:
+        path: "{{ ansible_remote_tmp }}"
+        state: directory
+        mode: "1777"
+
+    - name: Update system packages
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: dist
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+    - name: Install packages
+      ansible.builtin.apt:
+        name: "{{ vm_packages }}"
+        update_cache: true
+        cache_valid_time: "{{ apt_cache_valid_time_base }}"
+
+- name: Install and configure ClickHouseDB
+  hosts: clickhousedb
+  tasks:
+    - name: Download GPG key
+      ansible.builtin.apt_key:
+        url: "{{ db_key_url }}"
+        keyring: /usr/share/keyrings/clickhouse-keyring.gpg
+        state: present
+        validate_certs: yes
+
+    - name: Add repository
+      ansible.builtin.apt_repository:
+        repo: >
+          deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg
+               arch=amd64]
+          https://packages.clickhouse.com/deb lts main
+        filename: clickhouse
+        update_cache: true
+
+    - name: Install ClickHouse
+      ansible.builtin.apt:
+        name:
+          - clickhouse-server
+          - clickhouse-client
+        update_cache: true
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Start ClickHouse service
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: started
+        enabled: true
+
+- name: Setup database and import data
+  hosts: clickhousedb
+  tasks:
+    - name: Create table structure
+      ansible.builtin.shell: |
+        clickhouse-client --query="
+        CREATE TABLE {{ collection }}
+        (
+            orig_id          Int32,
+            orig_time        DateTime64(9, 'Europe/Prague'),
+            orig_topic       String,
+            CreatedTime      DateTime64(9, 'Europe/Prague'),
+            GpsTime          DateTime64(9, 'Europe/Prague'),
+            GsmSignal        Int32,
+            SatelliteCount   Int32,
+            LicensePlate     String,
+            VehicleType      Int32,
+            Company          String,
+            VehicleID        Int32,
+            Technology       Int32,
+            Ignition         Int32,
+            Longitude        Float64,
+            Latitude         Float64,
+            SpeedGps         Float64,
+            SpeedTach        Float64,
+            SpeedCan         Float64,
+            TachoGps         Float64,
+            TachoTach        Float64,
+            ModeDrive        Int32,
+            SpreadingMode    Int32,
+            Plow             Int32,
+            Gram             Int32,
+            WidthLeft        Float64,
+            WidthRight       Float64,
+            SumSalt          Float64,
+            SumInert         Float64,
+            SumBrine         Float64,
+            Cuts1            Int32,
+            Cuts2            Int32,
+            Cuts3            Int32,
+            CentralBroom     Int32,
+            LeftBroom        Int32,
+            RightBroom       Int32,
+            Turbine          Int32,
+            RunningShaft     Int32,
+            LeftFlushing     Int32,
+            RightFlushing    Int32,
+            CentralFlushing  Int32,
+            Misting          Int32,
+            Pump             Int32,
+            LightOn          Int32,
+            ModeArrow        Int32,
+            AkuVoltage       Float64,
+            RampUp           Int32,
+            Crash            Int32,
+            TempAir          Float64,
+            TempRoad         Float64,
+            Revs             Float64,
+            RevsExtension    Int32,
+            Fuel             Float64,
+            LevelPHM         Float64,
+            PowerVoltage     Float64,
+            Lighthouse       Int32
+        )
+        ENGINE = MergeTree
+        ORDER BY (GpsTime)
+        PARTITION BY toDate(GpsTime)"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Push and extract data
+      ansible.builtin.unarchive:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "/var/lib/clickhouse/user_files/"
+        mode: "0777"
+
+    - name: Import CSV data
+      ansible.builtin.shell: |
+        clickhouse-client \
+          --query="INSERT INTO {{ collection }} FORMAT CSV" \
+          < /var/lib/clickhouse/user_files/{{ data_file }}
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: /var/lib/clickhouse/user_files/{{ data_file }}
+        state: absent
+
+- name: Verify data import
+  hosts: clickhousedb
+  tasks:
+    - name: Query total SumSalt
+      ansible.builtin.shell: |
+        clickhouse-client --query="SELECT sum(SumSalt) FROM {{ collection }}"
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.stdout_lines[0] | float }}"
+
+    - name: Display total SumSalt
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: clickhousedb
+  tasks:
+    - name: Save result if in master run
+      block:
+        - name: Ensure results directory exists
+          file:
+            path: "{{ results_dir }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: Save result to file
+          copy:
+            content: |
+              {
+                "db": "{{ vm_name}}",
+                "host": "{{ inventory_hostname }}",
+                "sum_salt": {{ result | to_json }}
+              }
+            dest: "{{ results_dir }}/{{ vm_name }}-{{ inventory_hostname }}.json"
+          delegate_to: localhost
+      when: is_master_run | default(false)
+      run_once: true
+
+    - name: Stop container
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: stopped
+      delegate_to: localhost

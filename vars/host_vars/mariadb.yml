@@ -1,0 +1,30 @@
+---
+# VM VARS
+vm_name: mariadb
+vm_packages: "{{ packages_base +
+  [
+  'mysql-server',
+  'python3-pymysql'
+  ]
+  }}"
+vm_config:
+  limits.memory: "1GiB"
+  limits.cpu: "1"
+
+vm_devices:
+  root:
+    type: disk
+    pool: default
+    path: /
+    size: 5GB
+
+vm_profiles: "{{ lxd_profiles_base + ['mariadb-net'] }}"
+
+# FILE VARS
+data_file: "raltra.csv"
+data_tar: "{{ data_file }}.tar.gz"
+script_file: "send_data.sh"
+
+# DB VARS
+login_db: raltra
+collection: car_telemetry

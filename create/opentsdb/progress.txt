@@ -1,0 +1,42 @@
+lxc launch ubuntu:24.04 opentsdb --vm --profile default --profile opentsdb-net -c limits.cpu=2 -c limits.memory=2GB
+lxc exec opentsdb -- bash
+apt update && apt upgrade -y
+apt install openjdk-8-jdk micro gnuplot -y
+
+mkdir -p /root/.ssh
+ssh-keygen -t rsa -b 4096 -N '' -f /root/.ssh/id_rsa
+cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+grep -q '^\s*/swapfile\s' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+wget -O /opt/hbase-2.5.11-bin.tar.gz https://dlcdn.apache.org/hbase/stable/hbase-2.5.11-bin.tar.gz
+tar xzvf /opt/hbase-2.5.11-bin.tar.gz -C /opt/
+ln -s /opt/hbase-2.5.11 /hbase
+rm /opt/hbase-2.5.11-bin.tar.gz
+sed -i '/^[[:space:]]*#\{0,1\}[[:space:]]*export[[:space:]]\+JAVA_HOME=/s|.*|export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64|' /hbase/conf/hbase-env.sh
+sed -i '/<name>hbase.cluster.distributed<\/name>/{n;s/<value>false<\/value>/<value>true<\/value>/}' /hbase/conf/hbase-site.xml
+/hbase/bin/start-hbase.sh
+
+wget -O /opt/opentsdb-2.4.1_all.deb https://github.com/OpenTSDB/opentsdb/releases/download/v2.4.1/opentsdb-2.4.1_all.deb
+dpkg -i /opt/opentsdb-2.4.1_all.deb
+rm /opt/opentsdb-2.4.1_all.deb
+env COMPRESSION=NONE HBASE_HOME=/hbase /usr/share/opentsdb/tools/create_table.sh
+
+sed -i \
+-e 's|^#\?tsd.core.auto_create_metrics *=.*|tsd.core.auto_create_metrics = true|' \
+-e 's|^#\?tsd.core.auto_create_tagks *=.*|tsd.core.auto_create_tagks = true|' \
+-e 's|^#\?tsd.core.auto_create_tagvs *=.*|tsd.core.auto_create_tagvs = true|' \
+/etc/opentsdb/opentsdb.conf
+
+service opentsdb start
+
+lxc file push opentsdb/data/raltra.txt.gz opentsdb/tmp/
+
+/usr/share/opentsdb/bin/tsdb import /tmp/raltra.txt.gz
+/usr/share/opentsdb/bin/tsdb query 2023/01/01-00:00:00 2025/01/01-00:00:00 sum raltra.SumSalt | awk '{sum += $3} END {print "Total sum:", sum}'
+/usr/share/opentsdb/bin/tsdb scan raltra.* | grep -o "raltra\.[^ ]*" | sort -u | wc -l

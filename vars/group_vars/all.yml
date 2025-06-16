@@ -1,0 +1,22 @@
+---
+lxd_image_base: "24.04"
+lxd_profiles_base: ["default"]
+lxd_type_base: virtual-machine
+lxd_image_server_base: https://cloud-images.ubuntu.com/releases/
+lxd_image_protocol_base: simplestreams
+apt_cache_valid_time_base: 3600
+packages_base:
+  - python3
+  - gnupg
+  - curl
+  - micro
+  - python3-pip
+  - tar
+  - wget
+
+ansible_data_dir: "{{ playbook_dir }}/data"
+ansible_scripts_dir: "{{ playbook_dir }}/scripts"
+ansible_connection: community.general.lxd
+ansible_user: root
+ansible_remote_tmp: /tmp/.ansible
+ansible_lxd_container: "{{ inventory_hostname }}"
