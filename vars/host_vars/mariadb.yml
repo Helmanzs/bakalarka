@@ -7,9 +7,6 @@ vm_packages: "{{ packages_base +
   'python3-pymysql'
   ]
   }}"
-vm_config:
-  limits.memory: "1GiB"
-  limits.cpu: "1"
 
 vm_devices:
   root:
@@ -21,6 +18,7 @@ vm_devices:
 vm_profiles: "{{ lxd_profiles_base + ['mariadb-net'] }}"
 
 # FILE VARS
+data_file_name: "raltra"
 data_file: "raltra.csv"
 data_tar: "{{ data_file }}.tar.gz"
 script_file: "send_data.sh"

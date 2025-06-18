@@ -1,0 +1,176 @@
+---
+- name: Init ClickHouse VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/clickhousedb.yml
+  tasks:
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+
+- name: Common config
+  hosts: clickhousedb
+  tasks:
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+
+- name: Install and configure ClickHouseDB
+  hosts: clickhousedb
+  tasks:
+    - name: Download GPG key
+      ansible.builtin.apt_key:
+        url: "{{ db_key_url }}"
+        keyring: /usr/share/keyrings/clickhouse-keyring.gpg
+        state: present
+        validate_certs: true
+
+    - name: Add repository
+      ansible.builtin.apt_repository:
+        repo: >
+          deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg
+               arch=amd64]
+          https://packages.clickhouse.com/deb lts main
+        filename: clickhouse
+
+    - name: Install ClickHouse
+      ansible.builtin.apt:
+        name:
+          - clickhouse-server
+          - clickhouse-client
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+
+    - name: Start ClickHouse service
+      ansible.builtin.service:
+        name: clickhouse-server
+        state: started
+        enabled: true
+
+- name: Setup database and import data
+  hosts: clickhousedb
+  vars:
+    import_dir: "/var/lib/clickhouse/user_files"
+  tasks:
+    - name: Create table structure
+      ansible.builtin.shell: |
+        clickhouse-client --query="
+        CREATE TABLE {{ collection }}
+        (
+            orig_id          Int32,
+            orig_time        DateTime64(9, 'Europe/Prague'),
+            orig_topic       LowCardinality(String),
+            CreatedTime      DateTime64(9, 'Europe/Prague'),
+            GpsTime          DateTime64(9, 'Europe/Prague'),
+            GsmSignal        UInt8,
+            SatelliteCount   UInt16,
+            LicensePlate     String,
+            VehicleType      UInt8,
+            Company          LowCardinality(String),
+            VehicleID        UInt32,
+            Technology       UInt8,
+            Ignition         UInt8,
+            Longitude        Decimal(14,10),
+            Latitude         Decimal(14,10),
+            SpeedGps         Decimal32(3),
+            SpeedTach        Decimal32(3),
+            SpeedCan         Decimal32(3),
+            TachoGps         Decimal32(3),
+            TachoTach        Decimal32(3),
+            ModeDrive        UInt8,
+            SpreadingMode    UInt8,
+            Plow             UInt8,
+            Gram             Int32,
+            WidthLeft        Decimal32(3),
+            WidthRight       Decimal32(3),
+            SumSalt          Decimal64(8),
+            SumInert         Decimal64(8),
+            SumBrine         Decimal64(8),
+            Cuts1            UInt8,
+            Cuts2            UInt8,
+            Cuts3            UInt8,
+            CentralBroom     UInt8,
+            LeftBroom        UInt8,
+            RightBroom       UInt8,
+            Turbine          UInt8,
+            RunningShaft     UInt8,
+            LeftFlushing     UInt8,
+            RightFlushing    UInt8,
+            CentralFlushing  UInt8,
+            Misting          UInt8,
+            Pump             UInt8,
+            LightOn          UInt8,
+            ModeArrow        UInt8,
+            AkuVoltage       Decimal32(3),
+            RampUp           UInt8,
+            Crash            UInt8,
+            TempAir          Decimal32(3),
+            TempRoad         Decimal32(3),
+            Revs             Decimal64(10),
+            RevsExtension    UInt8,
+            Fuel             Decimal32(3),
+            LevelPHM         Decimal32(3),
+            PowerVoltage     Decimal32(3),
+            Lighthouse       UInt8
+        )
+        ENGINE = {{ db_engine }}
+        ORDER BY (VehicleID, GpsTime)
+        PARTITION BY toDate(GpsTime)
+        PRIMARY KEY (VehicleID, GpsTime)"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Copy data
+      ansible.builtin.copy:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "{{ import_dir }}/{{ data_tar }}"
+        mode: "0644"
+
+    - name: Extract data
+      ansible.builtin.shell: |
+        tar --extract --use-compress-program=pigz \
+        --file="{{ import_dir }}/{{ data_tar }}" \
+        --directory="{{ import_dir }}"
+        rm -f "{{ import_dir }}/{{ data_tar }}"
+        chmod -R 0644 "{{ import_dir }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Import data
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" \
+        clickhouse-client \
+          --query="INSERT INTO {{ collection }} FORMAT CSV" \
+          < {{ import_dir }}/{{ data_file }}
+      args:
+        executable: /bin/bash
+      register: insert_time
+      changed_when: true
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: "{{ import_dir }}/{{ data_file }}"
+        state: absent
+
+- name: Verify data import
+  hosts: clickhousedb
+  tasks:
+    - name: Query total SumSalt
+      ansible.builtin.shell: |
+        clickhouse-client --query="SELECT sum(SumSalt) FROM {{ collection }}"
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.stdout_lines[0] | float }}"
+
+    - name: Display total SumSalt
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: clickhousedb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"

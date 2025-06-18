@@ -2,9 +2,6 @@
 # VM VARS
 vm_name: influxdb
 vm_packages: "{{ packages_base }}"
-vm_config:
-  limits.memory: "2GiB"
-  limits.cpu: "1"
 
 vm_devices:
   root:
@@ -16,12 +13,14 @@ vm_devices:
 vm_profiles: "{{ lxd_profiles_base + ['influxdb-net'] }}"
 
 # FILE VARS
+data_file_name: "raltra"
 data_file: "raltra.lp"
 data_tar: "{{ data_file }}.tar.gz"
 script_file: "send_data.sh"
 
 # DB VARS
 db_port: 8181
+db_host: localhost
 db_tar_url: "https://dl.influxdata.com/influxdb/releases/influxdb3-core-3.0.3_linux_amd64.tar.gz"
 login_db: raltra
 collection: car_telemetry

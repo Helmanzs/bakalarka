@@ -1,0 +1,395 @@
+---
+- name: Init IoTDB VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/iotdb.yml
+  tasks:
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+
+- name: Common config
+  hosts: iotdb
+  tasks:
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+
+- name: Configure VM
+  hosts: iotdb
+  tasks:
+    - name: Install Apache IoTDB
+      ansible.builtin.pip:
+        name: apache-iotdb
+        executable: pip3
+        extra_args: --break-system-packages
+
+    - name: Disable UFW
+      ansible.builtin.service:
+        name: ufw
+        state: stopped
+        enabled: false
+
+    - name: Configure sysctl parameters
+      ansible.builtin.copy:
+        dest: /etc/sysctl.conf
+        content: |
+          # BEGIN ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+          {% for item in vm_sysctl_params %}
+          {{ item.name }} = {{ item.value }}
+          {% endfor %}
+          # END ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+
+    - name: Apply sysctl settings
+      ansible.builtin.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+        sysctl_set: yes
+      loop: "{{ vm_sysctl_params }}"
+
+    - name: Temporarily disable and re-enable swap
+      block:
+        - name: Disable swap
+          ansible.builtin.command: swapoff -a
+          register: swapoff_result
+          failed_when:
+            - swapoff_result.rc != 0
+            - "'swapoff: not found' not in swapoff_result.stderr"
+          changed_when: true
+
+        - name: Enable swap
+          ansible.builtin.command: swapon -a
+          register: swapon_result
+          failed_when:
+            - swapon_result.rc != 0
+            - "'swapon: not found' not in swapon_result.stderr"
+          changed_when: true
+
+    - name: Configure file limits
+      ansible.builtin.blockinfile:
+        path: /etc/security/limits.conf
+        block: "{{ vm_file_limits }}"
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - FILE LIMITS"
+
+    - name: Set JAVA_HOME in bashrc
+      ansible.builtin.blockinfile:
+        path: ~/.bashrc
+        block: |
+          export JAVA_HOME={{ vm_openjdk_path }}
+          export PATH=$JAVA_HOME/bin:$PATH
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - JAVA CONFIG"
+
+    - name: Source bashrc
+      ansible.builtin.shell: source ~/.bashrc
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Apply network settings
+      ansible.builtin.command:
+        cmd: sysctl -p
+      changed_when: true
+
+- name: Install and Configure IoTDB
+  hosts: iotdb
+  tasks:
+    - name: Get ram
+      ansible.builtin.set_fact:
+        total_ram: "{{ hostvars['localhost'].ram_limit | regex_replace('[^0-9]', '') | int }}"
+
+    - name: Calculate heap size
+      ansible.builtin.set_fact:
+        confignode_heap: >-
+          {% set heap = ((total_ram | int) * 0.2) | int %}
+          {% if heap < 1 %}
+            1
+          {% elif heap > 2 %}
+            2
+          {% else %}
+            {{ heap }}
+          {% endif %}
+
+        datanode_heap: >-
+          {% set heap =((total_ram | int) * 0.4) | int %}
+          {% if heap < 2 %}
+            2
+          {% elif heap > 8 %}
+            8
+          {% else %}
+            {{ heap }}
+          {% endif %}
+
+    - name: Create required directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - { path: "/data/iotdb" }
+        - { path: "/iotdb/" }
+
+    - name: Download IoTDB
+      ansible.builtin.unarchive:
+        src: "{{ db_zip_url }}"
+        dest: /tmp/
+        remote_src: true
+        mode: "0755"
+
+    - name: Move IoTDB
+      ansible.builtin.shell: |
+        mv /tmp/apache-iotdb*/** /iotdb/
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Configure ConfigNode memory
+      ansible.builtin.lineinfile:
+        path: /iotdb/conf/confignode-env.sh
+        line: 'MAX_HEAP_SIZE="{{ confignode_heap }}"'
+        state: present
+
+    - name: Configure DataNode memory
+      ansible.builtin.lineinfile:
+        path: /iotdb/conf/datanode-env.sh
+        line: 'MAX_HEAP_SIZE="{{ datanode_heap }}"'
+        state: present
+
+    - name: Configure IoTDB system properties
+      ansible.builtin.replace:
+        path: /iotdb/conf/iotdb-system.properties
+        regexp: |
+          ^cluster_name=.*
+          ^cn_internal_address=.*
+          ^dn_rpc_address=.*
+          ^dn_internal_address=.*
+        replace: |
+          cluster_name={{ iotdb_cluster_name }}
+          cn_internal_address={{ iotdb_cn_internal_address }}
+          dn_rpc_address={{ iotdb_dn_rpc_address }}
+          dn_internal_address={{ iotdb_dn_internal_address }}
+
+    - name: Create systemd service for ConfigNode
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/confignode.service
+        content: |
+          [Unit]
+          Description=ConfigNode Service
+          After=network.target
+
+          [Service]
+          Type=forking
+          ExecStart=/iotdb/sbin/start-confignode.sh -d
+          ExecStop=/iotdb/sbin/stop-confignode.sh
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0600"
+
+    - name: Create systemd service for DataNode
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/datanode.service
+        content: |
+          [Unit]
+          Description=DataNode Service
+          After=network.target
+
+          [Service]
+          Type=forking
+          ExecStart=/iotdb/sbin/start-datanode.sh -d
+          ExecStop=/iotdb/sbin/stop-datanode.sh
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0600"
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start ConfigNode service
+      ansible.builtin.systemd:
+        name: confignode.service
+        enabled: true
+        state: started
+
+    - name: Enable and start DataNode service
+      ansible.builtin.systemd:
+        name: datanode.service
+        enabled: true
+        state: started
+
+    - name: Wait for IoTDB RPC service to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 5
+        timeout: 60
+
+- name: Setup database and import data
+  hosts: iotdb
+  vars:
+    import_dir: "/tmp"
+    temp_dir: "/tmp/{{ data_file_name }}_temp"
+    threads: "{{ (hostvars['localhost'].cpu_limit | int) * 2 }}"
+  tasks:
+    - name: Deploy processing scripts
+      ansible.builtin.copy:
+        src: "{{ ansible_scripts_dir }}/{{ script_file }}"
+        dest: "/opt/"
+        mode: "0777"
+
+    - name: Copy data
+      ansible.builtin.copy:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "{{ import_dir }}/{{ data_tar }}"
+        mode: "0644"
+
+    - name: Extract data
+      ansible.builtin.shell: |
+        tar --extract --use-compress-program=pigz \
+        --file="{{ import_dir }}/{{ data_tar }}" \
+        --directory="{{ import_dir }}"
+        rm -f "{{ import_dir }}/{{ data_tar }}"
+        chmod -R 0644 "{{ import_dir }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Create required directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ temp_dir }}"
+        - /tmp/failed_rows
+
+    - name: Split CSV into chunks
+      ansible.builtin.shell: |
+        split -l 100000 --numeric-suffixes=1 --additional-suffix=.csv \
+          "{{ import_dir }}/{{ data_file }}" "{{ temp_dir }}/chunk_"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Record start time
+      ansible.builtin.command:
+        cmd: date +%s.%N
+      register: start_time
+      changed_when: false
+
+    - name: Get chunk files
+      ansible.builtin.shell:
+        cmd: "ls {{ temp_dir }}/chunk_*.csv"
+      register: chunk_files
+      changed_when: false
+
+    - name: Set header variable from first chunk file
+      ansible.builtin.slurp:
+        src: "{{ (chunk_files.stdout_lines | sort)[0] }}"
+      register: header_file
+
+    - name: Decode header and get first line
+      ansible.builtin.set_fact:
+        header_line: "{{ (header_file.content | b64decode).split('\n')[0] }}"
+
+    - name: Add header to other chunk files
+      ansible.builtin.shell: |
+        echo "{{ header_line }}" | cat - {{ item }} > {{ item }}.tmp && mv {{ item }}.tmp {{ item }}
+      loop: "{{ (chunk_files.stdout_lines | sort)[1:] }}"
+
+    - name: Insert data
+      ansible.builtin.shell: |
+        /iotdb/tools/import-data.sh \
+          -ft csv \
+          -h {{ db_host }} \
+          -p {{ db_port }} \
+          -u {{ db_user }} \
+          -pw {{ db_password }} \
+          -s "{{ item }}" \
+          -fd /tmp/failed_rows/ \
+          -aligned true \
+          -tn {{ threads }} \
+          -tz +02:00
+      loop: "{{ chunk_files.stdout_lines }}"
+      async: 1800
+      poll: 0
+      register: import_jobs
+
+    - name: Wait for parallel imports
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 100
+      delay: 10
+      loop: "{{ import_jobs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Record end time
+      ansible.builtin.command:
+        cmd: date +%s.%N
+      register: end_time
+      changed_when: false
+
+    # - name: Import data
+    #   ansible.builtin.shell: |
+    #     /usr/bin/time -f "DURATION_SECONDS=%e" \
+    #     /iotdb/tools/import-data.sh \
+    #     -ft csv \
+    #     -h {{ db_host }} \
+    #     -p {{ db_port }} \
+    #     -u {{ db_user }} \
+    #     -pw {{ db_password }} \
+    #     -s /{{ import_dir }}/{{ data_file }} \
+    #     -fd /tmp/failed_rows/ \
+    #     -aligned true \
+    #     -tn {{ threads }} \
+    #     -batch 200000 \
+    #     -tz +02:00 \
+    #   args:
+    #     executable: /bin/bash
+    #   register: insert_time
+    #   changed_when: true
+
+    - name: Format total duration
+      ansible.builtin.set_fact:
+        total_duration_output: >-
+          DURATION_SECONDS={{ '%.2f' | format((end_time.stdout | float) - (start_time.stdout | float)) }}
+
+    - name: Register total duration
+      ansible.builtin.set_fact:
+        insert_time:
+          stderr_lines: ["{{ total_duration_output }}"]
+
+- name: Verify data import
+  hosts: iotdb
+  tasks:
+    - name: Query total SumSalt
+      ansible.builtin.command: >
+        /iotdb/sbin/start-cli.sh
+        -h 127.0.0.1
+        -p {{ db_port }}
+        -u {{ db_user }}
+        -pw {{ db_password }}
+        -e "SELECT sum(SumSalt) from root.sus_uk.vehicle_* GROUP BY LEVEL=0;"
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ (query_result.stdout_lines[3]
+          | regex_replace('[^0-9Ee+\\-.]', '')
+          ) | float }}"
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: "{{  result }}"
+
+- name: Post processing
+  hosts: iotdb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"

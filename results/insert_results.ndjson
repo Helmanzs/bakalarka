@@ -1,0 +1,7 @@
+{"test_type": "insert", "db": "clickhousedb", "host": "clickhousedb", "sum_salt": "\"946284075.3949031\"", "insert_duration_seconds": "\"1.88\"", "ram_limit": "12GiB", "cpu_limit": "12"}
+{"test_type": "insert", "db": "columnstoredb", "host": "columnstoredb", "sum_salt": "\"946284075.3956\"", "insert_duration_seconds": "\"1.26\"", "ram_limit": "12GiB", "cpu_limit": "12"}
+{"test_type": "insert", "db": "influxdb", "host": "influxdb", "sum_salt": "\"943873501.6739397\"", "insert_duration_seconds": "\"124.2\"", "ram_limit": "12GiB", "cpu_limit": "12"}
+{"test_type": "insert", "db": "iotdb", "host": "iotdb", "sum_salt": "\"943084365.9696746\"", "insert_duration_seconds": "\"85.72\"", "ram_limit": "12GiB", "cpu_limit": "12"}
+{"test_type": "insert", "db": "mariadb", "host": "mariadb", "sum_salt": "\"946284075.3956\"", "insert_duration_seconds": "\"10.35\"", "ram_limit": "12GiB", "cpu_limit": "12"}
+{"test_type": "insert", "db": "mongodb", "host": "mongodb", "sum_salt": "\"946284075.3949046\"", "insert_duration_seconds": "\"34.62\"", "ram_limit": "12GiB", "cpu_limit": "12"}
+{"test_type": "insert", "db": "opentsdb", "host": "opentsdb", "sum_salt": "\"1.84926e+10\"", "insert_duration_seconds": "\"306.19\"", "ram_limit": "12GiB", "cpu_limit": "12"}

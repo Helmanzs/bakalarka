@@ -7,10 +7,6 @@ vm_packages: "{{ packages_base +
   'libjemalloc2'
   ]
   }}"
-vm_config:
-  limits.memory: "2GiB"
-  limits.cpu: "1"
-
 vm_devices:
   root:
     type: disk

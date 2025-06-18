@@ -8,9 +8,6 @@ vm_packages: "{{ packages_base +
   'gnuplot'
   ]
   }}"
-vm_config:
-  limits.memory: "2GiB"
-  limits.cpu: "1"
 
 vm_devices:
   root:

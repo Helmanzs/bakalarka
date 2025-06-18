@@ -7,9 +7,6 @@ vm_packages: "{{ packages_base +
   'unzip'
   ]
   }}"
-vm_config:
-  limits.memory: "2GiB"
-  limits.cpu: "1"
 
 vm_devices:
   root:
@@ -33,21 +30,20 @@ vm_file_limits: |
 vm_openjdk_path: "/usr/lib/jvm/java-17-openjdk-amd64"
 
 # FILE VARS
+data_file_name: "raltra"
 data_file: "raltra.csv"
 data_tar: "{{ data_file }}.tar.gz"
 script_file: "send_data.sh"
 
 # DB VARS
-db_zip_url: "https://dlcdn.apache.org/iotdb/2.0.3/apache-iotdb-2.0.3-all-bin.zip"
+db_version: "2.0.3"
+db_zip_url: "https://dlcdn.apache.org/iotdb/{{ db_version }}/apache-iotdb-{{ db_version }}-all-bin.zip"
 db_host: 127.0.0.1
 db_port: 6667
 db_user: root
 db_password: root
 login_db: raltra
 collection: car_telemetry
-
-confignode_heap_size: 1G
-datanode_heap_size: 2G
 
 iotdb_cluster_name: perfTestCluster
 iotdb_cn_internal_address: localhost

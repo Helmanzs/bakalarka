@@ -1,0 +1,51 @@
+- name: Extract duration from time output
+  ansible.builtin.set_fact:
+    insert_duration_seconds: >-
+      {{
+        (
+          insert_time.stderr_lines
+          | select("match", "^DURATION_SECONDS=")
+          | list
+          | first
+        )
+        .split("=")[1]
+        | float
+      }}
+
+- name: Record end time and calculate duration
+  ansible.builtin.set_fact:
+    playbook_end_time: "{{ ansible_date_time.epoch }}"
+    playbook_duration_seconds: "{{ ansible_date_time.epoch | int - hostvars['localhost'].playbook_start_time | int }}"
+  run_once: true
+  delegate_to: localhost
+
+- name: Save result if in master run
+  when: is_master_run | default(false)
+  block:
+    - name: Set local result fact on each host
+      ansible.builtin.set_fact:
+        local_result:
+          test_type: "{{ hostvars['localhost'].test_type }}"
+          db: "{{ vm_name }}"
+          host: "{{ inventory_hostname }}"
+          sum_salt: "{{ result }}"
+          insert_duration_seconds: "{{ insert_duration_seconds }}"
+          ram_limit: "{{ hostvars['localhost'].ram_limit }}"
+          cpu_limit: "{{ hostvars['localhost'].cpu_limit }}"
+          playbook_runtime_seconds: "{{ hostvars['localhost'].playbook_duration_seconds }}"
+
+    - name: Append this host’s result to NDJSON file
+      delegate_to: localhost
+      ansible.builtin.lineinfile:
+        path: "{{ results_dir }}/{{ hostvars['localhost'].test_type }}_results.ndjson"
+        create: true
+        insertafter: EOF
+        line: "{{ local_result | to_json }}"
+
+- name: Stop VM
+  community.general.lxd_container:
+    name: "{{ vm_name }}"
+    state: stopped
+  failed_when: false
+  changed_when: false
+  delegate_to: localhost

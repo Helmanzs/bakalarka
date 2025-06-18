@@ -1,0 +1,186 @@
+---
+- name: Init InfluxDB VM
+  hosts: localhost
+  vars_files:
+    - /etc/ansible/host_vars/influxdb.yml
+  tasks:
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+
+- name: Common config
+  hosts: influxdb
+  tasks:
+    - name: Init VM
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+
+- name: Configure VM
+  hosts: influxdb
+  tasks:
+    - name: Create InfluxDB directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /root/.influxdb
+        - /root/.influxdb/data
+
+    - name: Create symbolic link
+      ansible.builtin.file:
+        src: /root/.influxdb/
+        dest: /influxdb
+        state: link
+
+- name: Install and configure InfluxDB
+  hosts: influxdb
+  tasks:
+    - name: Download InfluxDB3
+      ansible.builtin.unarchive:
+        src: "{{ db_tar_url }}"
+        dest: /influxdb/
+        extra_opts:
+          - "--strip-components=1"
+        remote_src: true
+        mode: "0777"
+
+    - name: Update PATH environment variable
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        line: 'export PATH="$PATH:/root/.influxdb"'
+        create: true
+        mode: "0600"
+
+    - name: Create systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/influxdb3.service
+        content: |
+          [Unit]
+          Description=InfluxDB 3 Service
+          After=network.target
+
+          [Service]
+          User=root
+          ExecStart=/root/.influxdb/influxdb3 serve \
+            --node-id=node0 \
+            --http-bind=0.0.0.0:{{ db_port }} \
+            --object-store=file \
+            --data-dir /root/.influxdb/data
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Enable and start InfluxDB service
+      ansible.builtin.systemd:
+        name: influxdb3
+        state: started
+        enabled: true
+
+    - name: Generate InfluxDB3 admin token
+      ansible.builtin.shell:
+        cmd: |
+          set -o pipefail
+          /root/.influxdb/influxdb3 create token --admin \
+            | sed 's/\x1b\[[0-9;]*m//g' \
+            | sed -n 's/^Token: //p'
+        executable: /bin/bash
+      register: token_result
+      changed_when:
+        - token_result is succeeded
+        - token_result.stdout | length > 0
+
+    - name: Set influxdb_token fact
+      ansible.builtin.set_fact:
+        influxdb_token: "{{ token_result.stdout }}"
+
+    - name: Set INFLUXDB3_AUTH_TOKEN in .bashrc
+      ansible.builtin.lineinfile:
+        path: /root/.bashrc
+        line: 'export INFLUXDB3_AUTH_TOKEN="{{ token_result.stdout }}"'
+        create: true
+        mode: "0600"
+
+- name: Setup database and import data
+  hosts: influxdb
+  vars:
+    import_dir: "/tmp"
+    temp_dir: "/tmp/{{ data_file_name }}_temp"
+  tasks:
+    - name: Copy data
+      ansible.builtin.copy:
+        src: "{{ ansible_data_dir }}/{{ data_tar }}"
+        dest: "{{ import_dir }}/{{ data_tar }}"
+        mode: "0644"
+
+    - name: Extract data
+      ansible.builtin.shell: |
+        tar --extract --use-compress-program=pigz \
+        --file="{{ import_dir }}/{{ data_tar }}" \
+        --directory="{{ import_dir }}"
+        rm -f "{{ import_dir }}/{{ data_tar }}"
+        chmod -R 0644 "{{ import_dir }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Create chunk directory
+      ansible.builtin.file:
+        path: "{{ temp_dir }}"
+        state: directory
+
+    - name: Split and compress file into chunks
+      ansible.builtin.shell: |
+        split -l 10000 /tmp/{{ data_file }} {{ temp_dir }}/chunk_
+        pigz {{ temp_dir }}/chunk_*
+      args:
+        executable: /bin/bash
+
+    - name: Upload compressed chunks to InfluxDB
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" bash -c '
+          find {{ temp_dir }} -name "*.gz" | xargs -n1 -P$(nproc) -I{} \
+            curl --silent --show-error --fail \
+              --request POST "http://{{ db_host }}:{{ db_port }}/api/v2/write?org=ignored&bucket={{ collection }}" \
+              --header "Authorization: Token {{ influxdb_token }}" \
+              --header "Content-Type: text/plain; charset=utf-8" \
+              --header "Content-Encoding: gzip" \
+              --data-binary @"{}"
+        '
+      register: insert_time
+      args:
+        executable: /bin/bash
+
+- name: Verify data import
+  hosts: influxdb
+  tasks:
+    - name: Query total SumSalt
+      ansible.builtin.shell: |
+        influxdb3 query \
+          --database {{ collection }} \
+          --format csv \
+          "SELECT sum(\"SumSalt\") FROM {{ collection }}" \
+        | sed -n '2p'
+      environment:
+        PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+        INFLUXDB3_AUTH_TOKEN: "{{ influxdb_token }}"
+      register: query_result
+      changed_when: false
+
+    - name: Capture result
+      ansible.builtin.set_fact:
+        result: "{{ query_result.stdout | float }}"
+
+    - name: Display total SumSalt
+      ansible.builtin.debug:
+        msg: "{{ result }}"
+
+- name: Post processing
+  hosts: influxdb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"

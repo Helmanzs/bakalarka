@@ -7,9 +7,6 @@ vm_packages: "{{ packages_base +
   'ca-certificates'
   ]
   }}"
-vm_config:
-  limits.memory: "2GiB"
-  limits.cpu: "1"
 
 vm_devices:
   root:
@@ -27,3 +24,6 @@ data_tar: "{{ data_file }}.tar.gz"
 # DB VARS
 collection: car_telemetry
 db_key_url: "https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key"
+db_host: localhost
+db_port: 9000
+db_engine: "MergeTree"

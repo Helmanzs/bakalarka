@@ -9,9 +9,6 @@ vm_packages: "{{ packages_base +
   'pigz'
   ]
   }}"
-vm_config:
-  limits.memory: "4GiB"
-  limits.cpu: "2"
 
 vm_devices:
   root:

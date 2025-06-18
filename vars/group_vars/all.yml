@@ -13,6 +13,7 @@ packages_base:
   - python3-pip
   - tar
   - wget
+  - pigz
 
 ansible_data_dir: "{{ playbook_dir }}/data"
 ansible_scripts_dir: "{{ playbook_dir }}/scripts"
@@ -22,3 +23,7 @@ ansible_remote_tmp: /tmp/.ansible
 ansible_lxd_container: "{{ inventory_hostname }}"
 
 common_dir: "{{ playbook_dir }}/../common"
+
+resources_dir: "{{ playbook_dir }}/../vars/resource_vars"
+default_ram_profile: "ram2"
+default_cpu_profile: "cpu1"
