@@ -2,16 +2,16 @@
 - name: Init ColumnstoreDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/columnstoredb.yml
+    - "{{ ansible_vars_dir }}/host_vars/columnstoredb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: columnstoredb
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Configure VM
   hosts: columnstoredb
@@ -57,14 +57,15 @@
   tasks:
     - name: Add MariaDB APT key
       ansible.builtin.apt_key:
+        url: "{{ db_key_url }}"
         state: present
-        url: "{{ db_apt_key }}"
+        validate_certs: true
 
     - name: Add MariaDB APT repository
       ansible.builtin.apt_repository:
         repo: >
           deb [arch=amd64]
-          http://mirror.mariadb.org/repo/{{ mariadb_version }}/ubuntu
+          http://mirror.mariadb.org/repo/{{ db_version }}/ubuntu
           {{ ansible_distribution_release | lower }} main
         state: present
         filename: mariadb
@@ -110,6 +111,7 @@
   hosts: columnstoredb
   vars:
     import_dir: "/tmp"
+    socket: "/var/run/mysqld/mysqld.sock"
   tasks:
     - name: Create cross-engine user
       community.mysql.mysql_user:
@@ -118,7 +120,7 @@
         host: "{{ item }}"
         priv: "*.*:SELECT,PROCESS"
         state: present
-        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_unix_socket: "{{ socket }}"
       loop: "{{ db_user_host }}"
 
     - name: Restart services
@@ -131,15 +133,15 @@
 
     - name: Create database
       community.mysql.mysql_db:
-        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_unix_socket: "{{ socket }}"
         name: "{{ login_db }}"
         state: present
 
     - name: Create ColumnStore table
       community.mysql.mysql_query:
-        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_unix_socket: "{{ socket }}"
         query: |
-          CREATE TABLE {{ login_db }}.{{ collection }} (
+          CREATE TABLE {{ login_db }}.{{ db_table }} (
             orig_id INT,
             orig_time DATETIME,
             orig_topic TINYTEXT,
@@ -198,21 +200,7 @@
           ) ENGINE=Columnstore
 
     - name: Copy data
-      ansible.builtin.copy:
-        src: "{{ ansible_data_dir }}/{{ data_tar }}"
-        dest: "{{ import_dir }}/{{ data_tar }}"
-        mode: "0644"
-
-    - name: Extract data
-      ansible.builtin.shell: |
-        tar --extract --use-compress-program=pigz \
-        --file="{{ import_dir }}/{{ data_tar }}" \
-        --directory="{{ import_dir }}"
-        rm -f "{{ import_dir }}/{{ data_tar }}"
-        chmod -R 0644 "{{ import_dir }}"
-      args:
-        executable: /bin/bash
-      changed_when: true
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_copy_data.yml"
 
     - name: Remove CSV header
       ansible.builtin.shell: |
@@ -221,10 +209,10 @@
       args:
         executable: /bin/bash
 
-    - name: Import CSV data
+    - name: Import data
       ansible.builtin.shell: |
         /usr/bin/time -f "DURATION_SECONDS=%e" \
-        cpimport -s ',' {{ login_db }} {{ collection }} {{ import_dir }}/{{ data_file }}
+        cpimport -s ',' {{ login_db }} {{ db_table }} {{ import_dir }}/{{ data_file }}
       args:
         executable: /bin/bash
       register: insert_time
@@ -237,12 +225,14 @@
 
 - name: Verify data import
   hosts: columnstoredb
+  vars:
+    socket: "/var/run/mysqld/mysqld.sock"
   tasks:
     - name: Query total SumSalt
       community.mysql.mysql_query:
-        login_unix_socket: /var/run/mysqld/mysqld.sock
+        login_unix_socket: "{{ socket }}"
         login_db: "{{ login_db }}"
-        query: "SELECT CAST(SUM(SumSalt) AS DOUBLE) AS TotalSalt FROM {{ collection }};"
+        query: "SELECT CAST(SUM(SumSalt) AS DOUBLE) AS TotalSalt FROM {{ db_table }};"
       register: query_result
 
     - name: Capture result
@@ -257,4 +247,4 @@
   hosts: columnstoredb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

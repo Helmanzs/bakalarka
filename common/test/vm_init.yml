@@ -1,0 +1,32 @@
+- name: Include ram profile
+  ansible.builtin.include_vars:
+    file: "../../../vars/resource_vars/ram/{{ ram_profile | default(default_ram_profile) }}.yml"
+
+- name: Include cpu profile
+  ansible.builtin.include_vars:
+    file: "../../../vars/resource_vars/cpu/{{ cpu_profile | default(default_cpu_profile) }}.yml"
+
+- name: Start VM if stopped
+  community.general.lxd_container:
+    name: "{{ vm_name }}"
+    state: started
+  register: vm_start
+  changed_when: vm_start.changed
+
+- name: Get VM state
+  ansible.builtin.command:
+    cmd: "lxc info {{ vm_name }}"
+  register: vm_state
+  failed_when: false
+  changed_when: false
+
+- name: Extract IP address from container
+  ansible.builtin.set_fact:
+    vm_ip: "{{ (vm_state.stdout | regex_findall('inet:\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+)'))[0] }}"
+
+- name: Wait for SSH to be available
+  ansible.builtin.wait_for:
+    host: "{{ vm_ip }}"
+    port: 22
+    timeout: 300
+    delay: 5

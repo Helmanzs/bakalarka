@@ -2,31 +2,33 @@
 - name: Init ClickHouse VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/clickhousedb.yml
+    - "{{ ansible_vars_dir }}/host_vars/clickhousedb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: clickhousedb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
-- name: Install and configure ClickHouseDB
+- name: "Install and configure ClickHouseDB"
   hosts: clickhousedb
+  vars:
+    keyring: "/usr/share/keyrings/clickhouse-keyring.gpg"
   tasks:
     - name: Download GPG key
       ansible.builtin.apt_key:
         url: "{{ db_key_url }}"
-        keyring: /usr/share/keyrings/clickhouse-keyring.gpg
+        keyring: "{{ keyring }}"
         state: present
         validate_certs: true
 
     - name: Add repository
       ansible.builtin.apt_repository:
         repo: >
-          deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg
+          deb [signed-by={{ keyring }}
                arch=amd64]
           https://packages.clickhouse.com/deb lts main
         filename: clickhouse
@@ -53,7 +55,7 @@
     - name: Create table structure
       ansible.builtin.shell: |
         clickhouse-client --query="
-        CREATE TABLE {{ collection }}
+        CREATE TABLE IF NOT EXISTS {{ db_table }}
         (
             orig_id          Int32,
             orig_time        DateTime64(9, 'Europe/Prague'),
@@ -121,27 +123,16 @@
 
     - name: Copy data
       ansible.builtin.copy:
-        src: "{{ ansible_data_dir }}/{{ data_tar }}"
-        dest: "{{ import_dir }}/{{ data_tar }}"
+        src: "{{ ansible_data_dir }}/{{ data_gz }}"
+        dest: "{{ import_dir }}/{{ data_gz }}"
         mode: "0644"
-
-    - name: Extract data
-      ansible.builtin.shell: |
-        tar --extract --use-compress-program=pigz \
-        --file="{{ import_dir }}/{{ data_tar }}" \
-        --directory="{{ import_dir }}"
-        rm -f "{{ import_dir }}/{{ data_tar }}"
-        chmod -R 0644 "{{ import_dir }}"
-      args:
-        executable: /bin/bash
-      changed_when: true
 
     - name: Import data
       ansible.builtin.shell: |
         /usr/bin/time -f "DURATION_SECONDS=%e" \
         clickhouse-client \
-          --query="INSERT INTO {{ collection }} FORMAT CSV" \
-          < {{ import_dir }}/{{ data_file }}
+          -q "INSERT INTO {{ db_table }} FORMAT CSVWithNames COMPRESSION 'gzip'" \
+          < {{ import_dir }}/{{ data_gz }}
       args:
         executable: /bin/bash
       register: insert_time
@@ -157,7 +148,7 @@
   tasks:
     - name: Query total SumSalt
       ansible.builtin.shell: |
-        clickhouse-client --query="SELECT sum(SumSalt) FROM {{ collection }}"
+        clickhouse-client -q "SELECT sum(SumSalt) FROM {{ db_table }}"
       register: query_result
       changed_when: false
 
@@ -173,4 +164,4 @@
   hosts: clickhousedb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

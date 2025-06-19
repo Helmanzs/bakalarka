@@ -4,7 +4,6 @@ lxd_profiles_base: ["default"]
 lxd_type_base: virtual-machine
 lxd_image_server_base: https://cloud-images.ubuntu.com/releases/
 lxd_image_protocol_base: simplestreams
-apt_cache_valid_time_base: 3600
 packages_base:
   - python3
   - gnupg
@@ -14,16 +13,25 @@ packages_base:
   - tar
   - wget
   - pigz
+apt_cache_valid_time_base: 3600
 
-ansible_data_dir: "{{ playbook_dir }}/data"
-ansible_scripts_dir: "{{ playbook_dir }}/scripts"
-ansible_connection: community.general.lxd
+project_root: "{{ lookup('env', 'PROJECT_ROOT') | default(lookup('env', 'HOME') + '/playbook', true) }}"
+
+ansible_data_dir: "{{ project_root }}/{{vm_name}}/data"
+ansible_scripts_dir: "{{ project_root }}/scripts"
+ansible_common_dir: "{{ project_root }}/common"
+ansible_resources_dir: "{{ project_root }}/vars/resource_vars"
+ansible_vars_dir: "{{ project_root }}/vars"
+
 ansible_user: root
+ansible_connection: community.general.lxd
 ansible_remote_tmp: /tmp/.ansible
 ansible_lxd_container: "{{ inventory_hostname }}"
 
-common_dir: "{{ playbook_dir }}/../common"
-
-resources_dir: "{{ playbook_dir }}/../vars/resource_vars"
 default_ram_profile: "ram2"
 default_cpu_profile: "cpu1"
+
+data_file_name: "{{ data_file.split('.')[0] }}"
+data_tar: "{{ data_file }}.tar.gz"
+data_gz: "{{ data_file }}.gz"
+data_zip: "{{ data_file }}.zip"

@@ -61,3 +61,4 @@ desktop.ini
 *.gz
 *.txt
 *.csv
+./schemas

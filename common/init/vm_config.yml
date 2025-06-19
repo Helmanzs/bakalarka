@@ -5,14 +5,13 @@
     state: directory
     mode: "1777"
 
-- name: Update system packages
-  ansible.builtin.apt:
-    update_cache: true
-    upgrade: dist
-    cache_valid_time: "{{ apt_cache_valid_time_base }}"
+# - name: Update system packages
+#   ansible.builtin.apt:
+#     update_cache: true
+#     upgrade: dist
+#     cache_valid_time: "{{ apt_cache_valid_time_base }}"
 
 - name: Install packages
   ansible.builtin.apt:
     name: "{{ vm_packages }}"
-    update_cache: true
     cache_valid_time: "{{ apt_cache_valid_time_base }}"

@@ -1,17 +1,11 @@
 ---
-- name: Record start time
-  ansible.builtin.set_fact:
-    playbook_start_time: "{{ ansible_date_time.epoch }}"
-  run_once: true
-  delegate_to: localhost
-
 - name: Include ram profile
   ansible.builtin.include_vars:
-    file: "{{ resources_dir }}/ram/{{ ram_profile | default(default_ram_profile) }}.yml"
+    file: "{{ ansible_resources_dir }}/ram/{{ ram_profile | default(default_ram_profile) }}.yml"
 
 - name: Include cpu profile
   ansible.builtin.include_vars:
-    file: "{{ resources_dir }}/cpu/{{ cpu_profile | default(default_cpu_profile) }}.yml"
+    file: "{{ ansible_resources_dir }}/cpu/{{ cpu_profile | default(default_cpu_profile) }}.yml"
 
 - name: Get VM state
   ansible.builtin.command:
@@ -48,7 +42,12 @@
     config:
       limits.memory: "{{ ram_limit }}"
       limits.cpu: "{{ cpu_limit }}"
-    devices: "{{ vm_devices }}"
+    devices:
+      root:
+        type: disk
+        pool: default
+        path: /
+        size: "{{ vm_disk_size }}"
     wait_for_ipv4_addresses: true
     timeout: 600
 
