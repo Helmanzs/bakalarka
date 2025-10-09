@@ -1,0 +1,44 @@
+- name: Start IoTDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/iotdb.yml"
+  tasks:
+    - name: Start VM
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_init.yml"
+
+- name: Execute Point Lookup Query
+  hosts: iotdb
+  vars:
+    vehicle_id: "186"
+    start_target_timestamp: "1733161973500" #"2024-12-02T17:52:54"
+    end_target_timestamp:   "1733161984000" #"2024-12-02T17:53:04"
+    db_user: "root"
+    db_password: "root"
+  tasks:
+    - name: Wait for IoTDB to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 2
+        timeout: 60
+        state: started
+
+    - name: Perform indexed lookup (cold cache) and measure duration
+      ansible.builtin.shell: |
+        /iotdb/sbin/start-cli.sh -h 127.0.0.1 -p 6667 -e "SELECT * FROM root.sus_uk.vehicle_{{ vehicle_id }} WHERE time >= {{ start_target_timestamp }} AND time <= {{ end_target_timestamp }};"
+      register: query_result
+      changed_when: false
+    
+    - name: Capture total line number
+      ansible.builtin.set_fact:
+        rows_returned: "{{ query_result.stdout | regex_search('Total line number = ([0-9]+)', '\\1') | first }}"
+
+    - name: Capture query duration in seconds
+      ansible.builtin.set_fact:
+        query_duration_ms: "{{ query_result.stdout | regex_search('It costs ([0-9.]+)s', '\\1') | first }}"
+
+- name: Post processing
+  hosts: iotdb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_post_processing.yml"

@@ -1,0 +1,29 @@
+---
+- name: Initialize results system
+  hosts: localhost
+  tasks:
+    - name: Check if results directory exists
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/results"
+      register: results_dir_stat
+
+    - name: Create results directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/results"
+        state: directory
+        mode: "0755"
+
+    - name: Set global results path
+      ansible.builtin.set_fact:
+        global_results_dir: "{{ playbook_dir }}/results"
+        is_master_run: true
+
+- name: Run ClickHouse
+  ansible.builtin.import_playbook: clickhousedb/tests/{{ cache | default('hot') }}/{{ test_type | default('single-point') }}.yml
+  vars:
+    results_dir: "{{ hostvars['localhost'].global_results_dir }}"
+    is_master_run: "{{ hostvars['localhost'].is_master_run }}"
+    cache: "{{ cache | default('hot') }}"
+    ram_profile: "{{ ram_profile | default(default_ram_profile) }}"
+    cpu_profile: "{{ cpu_profile | default(default_cpu_profile) }}"
+    test_type: "{{ test_type | default('unspecified') }}"

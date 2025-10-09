@@ -8,13 +8,7 @@ vm_packages: "{{ packages_base +
   ]
   }}"
 
-vm_devices:
-  root:
-    type: disk
-    pool: default
-    path: /
-    size: 5GB
-
+vm_disk_size: 5GB
 vm_profiles: "{{ lxd_profiles_base + ['mariadb-net'] }}"
 
 # FILE VARS

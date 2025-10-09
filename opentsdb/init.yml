@@ -2,16 +2,16 @@
 - name: Init OpenTSDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/opentsdb.yml
+    - "{{ ansible_vars_dir }}/host_vars/opentsdb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: opentsdb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Configure SSH for HBase
   hosts: opentsdb
@@ -108,6 +108,20 @@
       ansible.builtin.command:
         cmd: /hbase/bin/start-hbase.sh
         creates: /hbase/logs/hbase-root-master-opentsdb.log
+    
+    - name: Check HBase master status
+      ansible.builtin.command:
+        cmd: /hbase/bin/hbase shell -n
+      args:
+        stdin: "status\n"
+      register: hbase_status
+
+    - name: Wait until HBase master is active
+      ansible.builtin.wait_for:
+        timeout: 60
+      until: hbase_status.stdout is search('active master')
+      retries: 20
+      delay: 5
 
 - name: Install and configure OpenTSDB
   hosts: opentsdb
@@ -243,4 +257,4 @@
   hosts: opentsdb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

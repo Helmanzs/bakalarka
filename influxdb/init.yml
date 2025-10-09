@@ -2,16 +2,16 @@
 - name: Init InfluxDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/influxdb.yml
+    - "{{ ansible_vars_dir }}/host_vars/influxdb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: influxdb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Configure VM
   hosts: influxdb
@@ -145,7 +145,7 @@
         /usr/bin/time -f "DURATION_SECONDS=%e" bash -c '
           find {{ temp_dir }} -name "*.gz" | xargs -n1 -P$(nproc) -I{} \
             curl --silent --show-error --fail \
-              --request POST "http://{{ db_host }}:{{ db_port }}/api/v2/write?org=ignored&bucket={{ collection }}" \
+              --request POST "http://{{ db_host }}:{{ db_port }}/api/v2/write?org=ignored&bucket={{ db_table }}" \
               --header "Authorization: Token {{ influxdb_token }}" \
               --header "Content-Type: text/plain; charset=utf-8" \
               --header "Content-Encoding: gzip" \
@@ -161,9 +161,9 @@
     - name: Query total SumSalt
       ansible.builtin.shell: |
         influxdb3 query \
-          --database {{ collection }} \
+          --database {{ db_table }} \
           --format csv \
-          "SELECT sum(\"SumSalt\") FROM {{ collection }}" \
+          "SELECT sum(\"SumSalt\") FROM {{ db_table }}" \
         | sed -n '2p'
       environment:
         PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
@@ -183,4 +183,4 @@
   hosts: influxdb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

@@ -2,16 +2,16 @@
 - name: Init TimescaleDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/timescaledb.yml
+    - "{{ ansible_vars_dir }}/host_vars/timescaledb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: timescaledb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Install and configure TimescaleDB
   hosts: timescaledb
@@ -184,17 +184,6 @@
       register: insert_time
       changed_when: true
 
-    # - name: Import data
-    #   become: true
-    #   become_user: "{{ db_user }}"
-    #   community.postgresql.postgresql_copy:
-    #     login_db: "{{ login_db }}"
-    #     copy_from: /tmp/{{ data_file }}
-    #     dst: "{{ collection }}"
-    #     options:
-    #       format: csv
-    #       header: true
-
     - name: Remove data file
       ansible.builtin.file:
         path: /tmp/{{ data_file }}
@@ -223,4 +212,4 @@
   hosts: timescaledb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

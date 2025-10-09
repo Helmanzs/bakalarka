@@ -3,7 +3,6 @@
 vm_name: timescaledb
 vm_packages: "{{ packages_base +
   [
-  'gnupg',
   'postgresql-common',
   'apt-transport-https',
   'lsb-release',
@@ -12,13 +11,7 @@ vm_packages: "{{ packages_base +
   ]
   }}"
 
-vm_devices:
-  root:
-    type: disk
-    pool: default
-    path: /
-    size: 8GB
-
+vm_disk_size: 8GB
 vm_profiles: "{{ lxd_profiles_base + ['timescaledb-net'] }}"
 
 # FILE VARS
@@ -28,7 +21,7 @@ script_file: ""
 
 # DB VARS
 gpg_key_url: "https://packagecloud.io/timescale/timescaledb/gpgkey"
-db_port: 8812
+db_port: 5432
 db_host: localhost
 db_user: postgres
 db_password: quest

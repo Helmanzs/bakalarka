@@ -2,16 +2,16 @@
 - name: Init QuestDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/questdb.yml
+    - "{{ ansible_vars_dir }}/host_vars/questdb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: questdb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Install and configure QuestDB
   hosts: questdb
@@ -131,19 +131,6 @@
         executable: /bin/bash
       changed_when: true
 
-    # - name: Import data
-    #   community.postgresql.postgresql_query:
-    #     query: >
-    #       COPY {{ collection }}
-    #       FROM '{{ data_file }}'
-    #       WITH HEADER true
-    #       TIMESTAMP 'orig_time'
-    #     login_host: "{{ db_host }}"
-    #     login_port: "{{ db_port }}"
-    #     login_user: "{{ db_user }}"
-    #     login_password: "{{ db_password }}"
-    #     login_db: "{{ login_db }}"
-
     - name: Wait for import to finish
       community.postgresql.postgresql_query:
         query: SELECT COUNT(*) AS count FROM {{ collection }};
@@ -153,38 +140,42 @@
         login_password: "{{ db_password }}"
         login_db: "{{ login_db }}"
       register: result
-      until: result.query_result[0].count | int >= 600000
+      until: (result.query_result is defined and result.query_result | length > 0 and (result.query_result[0].count | int) >= 600000)
       retries: "{{ db_import_retries }}"
       delay: "{{ db_import_retry_inverval }}"
 
-    - name: Remove data file
-      ansible.builtin.file:
-        path: /root/.questdb/import/{{ data_file }}
-        state: absent
-
-- name: Verify data import
-  hosts: questdb
-  tasks:
-    - name: Query total SumSalt
-      community.postgresql.postgresql_query:
-        query: SELECT sum(sumsalt) FROM {{ collection }};
-        login_host: "{{ db_host }}"
-        login_port: "{{ db_port }}"
-        login_user: "{{ db_user }}"
-        login_password: "{{ db_password }}"
-        login_db: "{{ login_db }}"
-      register: query_result
-
-    - name: Capture result
-      ansible.builtin.set_fact:
-        result: "{{ query_result.query_result[0].sum | float }}"
-
-    - name: Display result
-      ansible.builtin.debug:
+    - name: Capture number of rows
+      debug:
         msg: "{{ result }}"
 
-- name: Post processing
-  hosts: questdb
-  tasks:
-    - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+#     - name: Remove data file
+#       ansible.builtin.file:
+#         path: /root/.questdb/import/{{ data_file }}
+#         state: absent
+
+# - name: Verify data import
+#   hosts: questdb
+#   tasks:
+#     - name: Query total SumSalt
+#       community.postgresql.postgresql_query:
+#         query: SELECT sum(sumsalt) FROM {{ collection }};
+#         login_host: "{{ db_host }}"
+#         login_port: "{{ db_port }}"
+#         login_user: "{{ db_user }}"
+#         login_password: "{{ db_password }}"
+#         login_db: "{{ login_db }}"
+#       register: query_result
+
+#     - name: Capture result
+#       ansible.builtin.set_fact:
+#         result: "{{ query_result.query_result[0].sum | float }}"
+
+#     - name: Display result
+#       ansible.builtin.debug:
+#         msg: "{{ result }}"
+
+# - name: Post processing
+#   hosts: questdb
+#   tasks:
+#     - name: Common post processing
+#       ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

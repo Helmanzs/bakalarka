@@ -13,7 +13,7 @@
     - name: Common VM Config
       ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
-- name: "Install and configure ClickHouseDB"
+- name: Install and configure ClickHouseDB
   hosts: clickhousedb
   vars:
     keyring: "/usr/share/keyrings/clickhouse-keyring.gpg"
@@ -35,7 +35,7 @@
 
     - name: Install ClickHouse
       ansible.builtin.apt:
-        name:
+        name: 
           - clickhouse-server
           - clickhouse-client
       environment:

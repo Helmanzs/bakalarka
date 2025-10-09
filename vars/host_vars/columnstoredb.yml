@@ -33,7 +33,7 @@ data_file: "raltra.csv"
 # DB VARS
 login_db: raltra
 db_table: car_telemetry
-db_version: "11.8.2"
+db_version: "11.8"
 db_host: localhost
 db_port: 3306
 db_key_url: "https://mariadb.org/mariadb_release_signing_key.asc"

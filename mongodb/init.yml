@@ -2,16 +2,16 @@
 - name: Init MongoDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/mongodb.yml
+    - "{{ ansible_vars_dir }}/host_vars/mongodb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: mongodb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Install and configure MongoDB
   hosts: mongodb
@@ -36,7 +36,9 @@
 
     - name: Install MongoDB
       ansible.builtin.apt:
-        name: mongodb-org
+        name: 
+          - mongodb-org
+          - mongodb-mongosh
         update_cache: true
       environment:
         DEBIAN_FRONTEND: noninteractive
@@ -69,17 +71,6 @@
         src: "{{ ansible_data_dir }}/{{ data_tar }}"
         dest: "/tmp/"
         mode: "0777"
-
-    # - name: Import JSON data
-    #   ansible.builtin.command:
-    #     argv:
-    #       - mongoimport
-    #       - --uri=mongodb://{{ login_host }}:{{ login_port }}/{{ login_db }}
-    #       - --collection={{ collection }}
-    #       - --file=/tmp/{{ data_file }}
-    #   args:
-    #     executable: /bin/bash
-    #   changed_when: true
 
     - name: Import data
       ansible.builtin.shell: |
@@ -131,4 +122,4 @@
   hosts: mongodb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

@@ -8,13 +8,8 @@ vm_packages: "{{ packages_base +
   ]
   }}"
 
-vm_devices:
-  root:
-    type: disk
-    pool: default
-    path: /
-    size: 8GB
 
+vm_disk_size: 8GB
 vm_profiles: "{{ lxd_profiles_base + ['iotdb-net'] }}"
 
 vm_sysctl_params:
@@ -36,7 +31,7 @@ data_tar: "{{ data_file }}.tar.gz"
 script_file: "send_data.sh"
 
 # DB VARS
-db_version: "2.0.3"
+db_version: "2.0.5"
 db_zip_url: "https://dlcdn.apache.org/iotdb/{{ db_version }}/apache-iotdb-{{ db_version }}-all-bin.zip"
 db_host: 127.0.0.1
 db_port: 6667

@@ -2,16 +2,16 @@
 - name: Init IoTDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/iotdb.yml
+    - "{{ ansible_vars_dir }}/host_vars/iotdb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: iotdb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Configure VM
   hosts: iotdb
@@ -232,7 +232,9 @@
   vars:
     import_dir: "/tmp"
     temp_dir: "/tmp/{{ data_file_name }}_temp"
-    threads: "{{ (hostvars['localhost'].cpu_limit | int) * 2 }}"
+    cpu_cores: "{{ hostvars['localhost'].cpu_limit | int}}"
+    threads: "{{ (cpu_cores * 2) | int }}"
+    parallel_imports: "{{ ((cpu_cores | int) <= 2) | ternary(2, (cpu_cores | int) * 2) }}"
   tasks:
     - name: Deploy processing scripts
       ansible.builtin.copy:
@@ -299,60 +301,42 @@
         echo "{{ header_line }}" | cat - {{ item }} > {{ item }}.tmp && mv {{ item }}.tmp {{ item }}
       loop: "{{ (chunk_files.stdout_lines | sort)[1:] }}"
 
-    - name: Insert data
-      ansible.builtin.shell: |
-        /iotdb/tools/import-data.sh \
-          -ft csv \
-          -h {{ db_host }} \
-          -p {{ db_port }} \
-          -u {{ db_user }} \
-          -pw {{ db_password }} \
-          -s "{{ item }}" \
-          -fd /tmp/failed_rows/ \
-          -aligned true \
-          -tn {{ threads }} \
-          -tz +02:00
-      loop: "{{ chunk_files.stdout_lines }}"
-      async: 1800
-      poll: 0
-      register: import_jobs
+    - name: Create chunk batches for limited parallel imports
+      ansible.builtin.set_fact:
+        chunk_batches: "{{ chunk_files.stdout_lines | batch(parallel_imports) | list }}"
 
-    - name: Wait for parallel imports
-      ansible.builtin.async_status:
-        jid: "{{ item.ansible_job_id }}"
-      register: job_result
-      until: job_result.finished
-      retries: 100
-      delay: 10
-      loop: "{{ import_jobs.results }}"
+    - name: Run imports in limited parallel batches
+      vars:
+        total_batches: "{{ chunk_batches | length }}"
+      ansible.builtin.shell: |
+        echo "=== Starting batch {{ loop_index }} of {{ total_batches }} ==="
+        for chunk in {{ item | join(' ') }}; do
+          /iotdb/tools/import-data.sh \
+            -ft csv \
+            -h {{ db_host }} \
+            -p {{ db_port }} \
+            -u {{ db_user }} \
+            -pw {{ db_password }} \
+            -s "$chunk" \
+            -fd /tmp/failed_rows/ \
+            -aligned true \
+            -tn {{ threads }} \
+            -tz +02:00 &
+        done
+        wait
+        echo "=== Finished batch {{ loop_index }} ==="
+      loop: "{{ chunk_batches }}"
       loop_control:
-        label: "{{ item.item }}"
+        label: "Batch {{ loop_index }} of {{ chunk_batches | length }}"
+        index_var: loop_index
+      args:
+        executable: /bin/bash
 
     - name: Record end time
       ansible.builtin.command:
         cmd: date +%s.%N
       register: end_time
       changed_when: false
-
-    # - name: Import data
-    #   ansible.builtin.shell: |
-    #     /usr/bin/time -f "DURATION_SECONDS=%e" \
-    #     /iotdb/tools/import-data.sh \
-    #     -ft csv \
-    #     -h {{ db_host }} \
-    #     -p {{ db_port }} \
-    #     -u {{ db_user }} \
-    #     -pw {{ db_password }} \
-    #     -s /{{ import_dir }}/{{ data_file }} \
-    #     -fd /tmp/failed_rows/ \
-    #     -aligned true \
-    #     -tn {{ threads }} \
-    #     -batch 200000 \
-    #     -tz +02:00 \
-    #   args:
-    #     executable: /bin/bash
-    #   register: insert_time
-    #   changed_when: true
 
     - name: Format total duration
       ansible.builtin.set_fact:
@@ -392,4 +376,4 @@
   hosts: iotdb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

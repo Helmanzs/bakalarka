@@ -19,7 +19,7 @@ host_vars/*.vault
 roles/*/
 !roles/requirements.yml
 
-# Shell scripts (no need to ignore *.sh)
+# Shell scripts
 # Ignore compiled binaries, temp files
 *.swp
 *.swo
@@ -62,3 +62,7 @@ desktop.ini
 *.txt
 *.csv
 ./schemas
+*/data/
+
+# Ignore benchmark / results folders
+results/

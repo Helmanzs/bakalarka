@@ -1,0 +1,50 @@
+- name: Start ColumnStoreDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/columnstoredb.yml"
+  tasks:
+    - name: Start VM
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_init.yml"
+
+- name: Execute Point Lookup Query
+  hosts: columnstoredb
+  vars:
+    vehicle_id: "186"
+    target_timestamp: "2024-12-02 17:52:54"
+    db_user: "cross_engine"
+    db_password: "cross_engine"
+  tasks:
+    - name: Wait for ColumnStoreDB to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 2
+        timeout: 60
+        state: started
+
+    - name: Perform indexed lookup (cold cache) and measure duration
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" \
+        mariadb -h {{ db_host }} -P {{ db_port }} -u {{ db_user }} -p{{ db_password }} {{ login_db }} \
+          -e "SELECT * FROM {{ db_table }} \
+          WHERE VehicleID='{{ vehicle_id }}' \
+          AND GpsTime='{{ target_timestamp }}';"
+      register: query_execution
+      changed_when: false
+
+    - name: Capture rows returned by query
+      ansible.builtin.shell: |
+        mariadb -N -h {{ db_host }} -P {{ db_port }} -u {{ db_user }} -p{{ db_password }} {{ login_db }} \
+        -e "SELECT COUNT(*) FROM {{ db_table }} \
+        WHERE VehicleID='{{ vehicle_id }}' \
+        AND GpsTime='{{ target_timestamp }}';"
+      register: query_rows_returned
+      changed_when: false
+
+- name: Post processing
+  hosts: columnstoredb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_post_processing.yml"
+
+

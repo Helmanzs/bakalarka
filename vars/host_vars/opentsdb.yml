@@ -5,18 +5,11 @@ vm_packages: "{{ packages_base +
   [
   'openjdk-8-jdk',
   'python3-lxml',
-  'gnuplot',
-  'pigz'
+  'gnuplot'
   ]
   }}"
 
-vm_devices:
-  root:
-    type: disk
-    pool: default
-    path: /
-    size: 12GB
-
+vm_disk_size: 16GB
 vm_profiles: "{{ lxd_profiles_base + ['opentsdb-net'] }}"
 
 vm_swap_size: "2G"
@@ -25,7 +18,7 @@ vm_openjdk_path: "/usr/lib/jvm/java-8-openjdk-amd64"
 
 # FILE VARS
 data_file_name: "raltra"
-data_file: "raltra.txt" #"raltra.txt.gz"
+data_file: "raltra.txt"
 data_tar: "raltra.txt.tar.gz"
 script_file: "send_data.py"
 
@@ -39,8 +32,8 @@ collection: car_telemetry
 db_chunk_size: 50000
 
 # HBASE VARS
-hbase_version: "2.5.11"
-hbase_tar_url: "https://dlcdn.apache.org/hbase/stable/hbase-{{ hbase_version }}-bin.tar.gz"
+hbase_version: "2.5.12"
+hbase_tar_url: "https://dlcdn.apache.org/hbase/{{ hbase_version }}/hbase-{{ hbase_version }}-bin.tar.gz"
 hbase_heapsize: 2048
 hbase_env_settings:
   JAVA_HOME: "{{ vm_openjdk_path }}"

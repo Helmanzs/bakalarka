@@ -1,4 +1,20 @@
 ---
+- name: Validate test parameters
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - "{{ ansible_vars_dir }}/test_types.yml"
+
+  vars:
+    caches:
+      - hot
+      - cold
+
+  tasks:
+    - name: Include parameter validation tasks
+      include_tasks: "{{ ansible_common_dir }}/test/vm_validate.yml"
+
+
 - name: Initialize results system
   hosts: localhost
   tasks:
@@ -13,17 +29,14 @@
         state: directory
         mode: "0755"
 
-    - name: Set global results path
-      ansible.builtin.set_fact:
-        global_results_dir: "{{ playbook_dir }}/results"
+    - name: Set facts on hosts
+      set_fact:
+        global_results_dir: "{{ project_root }}/results"
         is_master_run: true
+        test_type: "{{ test_type }}"
+      delegate_to: "{{ database }}"
+      delegate_facts: true
 
-- name: Run ClickHouse
-  ansible.builtin.import_playbook: clickhousedb/tests/{{ cache | default('hot') }}/{{ test_type | default('single-point') }}.yml
-  vars:
-    results_dir: "{{ hostvars['localhost'].global_results_dir }}"
-    is_master_run: "{{ hostvars['localhost'].is_master_run }}"
-    cache: "{{ cache | default('hot') }}"
-    ram_profile: "{{ ram_profile | default(default_ram_profile) }}"
-    cpu_profile: "{{ cpu_profile | default(default_cpu_profile) }}"
-    test_type: "{{ test_type | default('unspecified') }}"
+
+- name: Run database
+  import_playbook: "{{ database }}/tests/{{ cache }}/{{ test_type }}.yml"

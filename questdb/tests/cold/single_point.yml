@@ -1,0 +1,50 @@
+- name: Start QuestDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/questdb.yml"
+  tasks:
+    - name: Start VM
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_init.yml"
+
+- name: Execute Point Lookup Query
+  hosts: questdb
+  vars:
+    vehicle_id: "186"
+    target_timestamp: "2024-12-02T17:52:54"
+  tasks:
+    - name: Check if QuestDB is running
+      ansible.builtin.shell: 
+        pgrep -f questdb
+      register: questdb_pid
+      ignore_errors: true
+
+    - name: Start QuestDB service if not running
+      ansible.builtin.command: 
+        /root/questdb/bin/questdb.sh start
+      when: questdb_pid.rc != 0
+
+    - name: Perform indexed lookup (cold cache) and measure duration
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" \
+        psql "host={{ db_host }} port={{ db_port }} dbname={{ login_db }} user={{ db_user }} password={{ db_password }}" \
+        -c "SELECT VehicleID FROM {{ collection }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = timestamp '{{ target_timestamp }}';"
+      register: query_execution
+      changed_when: false
+
+    - name: Get number of rows returned
+      ansible.builtin.shell: |
+        psql "host={{ db_host }} port={{ db_port }} dbname={{ login_db }} user={{ db_user }} password={{ db_password }}" \
+        -t -c "SELECT count(*) FROM {{ collection }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = timestamp '{{ target_timestamp }}';" \
+        | tr -d '[:space:]'
+      register: query_rows_returned
+      changed_when: false
+
+    - name: Set number of rows returned
+      ansible.builtin.set_fact:
+        rows_returned: "{{ query_rows_returned.stdout | int }}"
+
+- name: Post processing
+  hosts: questdb
+  tasks:
+    - name: Common post processing
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_post_processing.yml"

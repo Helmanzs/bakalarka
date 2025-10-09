@@ -1,1 +1,0 @@
-{"test_type": "single-point", "db": "clickhousedb", "host": "clickhousedb", "query_duration_ms": "16.0", "rows_read": "8192", "rows_returned": "1", "ram_limit": "12GiB", "cpu_limit": "12", "cache": "cold"}

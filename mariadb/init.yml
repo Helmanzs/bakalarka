@@ -2,16 +2,16 @@
 - name: Init MariaDB VM
   hosts: localhost
   vars_files:
-    - /etc/ansible/host_vars/mariadb.yml
+    - "{{ ansible_vars_dir }}/host_vars/mariadb.yml"
   tasks:
     - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_init.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_init.yml"
 
 - name: Common config
   hosts: mariadb
   tasks:
-    - name: Init VM
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_config.yml"
+    - name: Common VM Config
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_config.yml"
 
 - name: Setup database and import data
   hosts: mariadb
@@ -223,4 +223,4 @@
   hosts: mariadb
   tasks:
     - name: Common post processing
-      ansible.builtin.include_tasks: "{{ common_dir }}/vm_post_processing.yml"
+      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/init/vm_post_processing.yml"

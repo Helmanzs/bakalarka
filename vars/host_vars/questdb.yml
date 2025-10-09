@@ -9,13 +9,7 @@ vm_packages: "{{ packages_base +
   ]
   }}"
 
-vm_devices:
-  root:
-    type: disk
-    pool: default
-    path: /
-    size: 8GB
-
+vm_disk_size: 8GB
 vm_profiles: "{{ lxd_profiles_base + ['questdb-net'] }}"
 
 vm_swap_size: "2G"
