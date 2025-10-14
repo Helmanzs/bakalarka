@@ -1,0 +1,69 @@
+---
+- name: Create table structure
+  ansible.builtin.shell: |
+    clickhouse-client --query="
+    CREATE TABLE IF NOT EXISTS {{ db_table }}
+    (
+        orig_id          Int32,
+        orig_time        DateTime64(9, 'Europe/Prague'),
+        orig_topic       LowCardinality(String),
+        CreatedTime      DateTime64(9, 'Europe/Prague'),
+        GpsTime          DateTime64(9, 'Europe/Prague'),
+        GsmSignal        UInt8,
+        SatelliteCount   UInt16,
+        LicensePlate     String,
+        VehicleType      UInt8,
+        Company          LowCardinality(String),
+        VehicleID        UInt32,
+        Technology       UInt8,
+        Ignition         UInt8,
+        Longitude        Decimal(14,10),
+        Latitude         Decimal(14,10),
+        SpeedGps         Decimal32(3),
+        SpeedTach        Decimal32(3),
+        SpeedCan         Decimal32(3),
+        TachoGps         Decimal32(3),
+        TachoTach        Decimal32(3),
+        ModeDrive        UInt8,
+        SpreadingMode    UInt8,
+        Plow             UInt8,
+        Gram             Int32,
+        WidthLeft        Decimal32(3),
+        WidthRight       Decimal32(3),
+        SumSalt          Decimal64(8),
+        SumInert         Decimal64(8),
+        SumBrine         Decimal64(8),
+        Cuts1            UInt8,
+        Cuts2            UInt8,
+        Cuts3            UInt8,
+        CentralBroom     UInt8,
+        LeftBroom        UInt8,
+        RightBroom       UInt8,
+        Turbine          UInt8,
+        RunningShaft     UInt8,
+        LeftFlushing     UInt8,
+        RightFlushing    UInt8,
+        CentralFlushing  UInt8,
+        Misting          UInt8,
+        Pump             UInt8,
+        LightOn          UInt8,
+        ModeArrow        UInt8,
+        AkuVoltage       Decimal32(3),
+        RampUp           UInt8,
+        Crash            UInt8,
+        TempAir          Decimal32(3),
+        TempRoad         Decimal32(3),
+        Revs             Decimal64(10),
+        RevsExtension    UInt8,
+        Fuel             Decimal32(3),
+        LevelPHM         Decimal32(3),
+        PowerVoltage     Decimal32(3),
+        Lighthouse       UInt8
+    )
+    ENGINE = {{ db_engine }}
+    ORDER BY (VehicleID, GpsTime)
+    PARTITION BY toDate(GpsTime)
+    PRIMARY KEY (VehicleID, GpsTime)"
+  args:
+    executable: /bin/bash
+  changed_when: true

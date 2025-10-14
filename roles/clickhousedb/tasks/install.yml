@@ -1,0 +1,29 @@
+---
+- name: Download GPG key
+  ansible.builtin.apt_key:
+    url: "{{ db_key_url }}"
+    keyring: "{{ keyring }}"
+    state: present
+    validate_certs: true
+
+- name: Add repository
+  ansible.builtin.apt_repository:
+    repo: >
+      deb [signed-by={{ keyring }}
+            arch=amd64]
+      https://packages.clickhouse.com/deb lts main
+    filename: clickhouse
+
+- name: Install ClickHouse
+  ansible.builtin.apt:
+    name: 
+      - clickhouse-server
+      - clickhouse-client
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Start ClickHouse service
+  ansible.builtin.service:
+    name: clickhouse-server
+    state: started
+    enabled: true

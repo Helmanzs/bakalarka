@@ -1,0 +1,48 @@
+---
+- name: Ensure .ssh directory exists
+  ansible.builtin.file:
+    path: "/root/.ssh"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Generate SSH key
+  ansible.builtin.openssh_keypair:
+    path: "/root/.ssh/id_rsa"
+    size: 4096
+    type: rsa
+    owner: root
+    group: root
+    mode: "0600"
+    force: false
+
+- name: Slurp remote root’s public key
+  ansible.builtin.slurp:
+    src: "/root/.ssh/id_rsa.pub"
+  register: slurped_key
+
+- name: Add public key to authorized_keys
+  ansible.builtin.authorized_key:
+    user: root
+    key: "{{ slurped_key.content | b64decode }}"
+    state: present
+    path: "/root/.ssh/authorized_keys"
+
+- name: Remove any existing 127.0.0.1 entry from known_hosts
+  ansible.builtin.known_hosts:
+    path: "/root/.ssh/known_hosts"
+    name: 127.0.0.1
+    state: absent
+
+- name: Disable strict host key checking
+  ansible.builtin.blockinfile:
+    path: "/root/.ssh/config"
+    create: yes
+    block: |
+      Host 127.0.0.1
+          StrictHostKeyChecking no
+          UserKnownHostsFile=/dev/null
+    owner: root
+    group: root
+    mode: "0600"

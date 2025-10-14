@@ -1,0 +1,57 @@
+---
+- name: Download QuestDB
+  ansible.builtin.get_url:
+    url: "{{ db_tar_url }}"
+    dest: /tmp/questdb.tar.gz
+    mode: "0777"
+
+- name: Extract QuestDB
+  ansible.builtin.unarchive:
+    src: /tmp/questdb.tar.gz
+    dest: /root/
+    remote_src: true
+    creates: /root/questdb
+
+- name: Rename QuestDB folder
+  ansible.builtin.command:
+    cmd: mv /root/questdb-{{  db_version }}-rt-linux-x86-64 /root/questdb
+  args:
+    removes: /root/questdb-{{ db_version }}-rt-linux-x86-64
+    creates: /root/questdb
+
+- name: Clean up download
+  ansible.builtin.file:
+    path: /tmp/questdb.tar.gz
+    state: absent
+
+- name: Create systemd service for QuestDB
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/questdb.service
+    content: |
+      [Unit]
+      Description=QuestDB Service
+      After=network.target
+
+      [Service]
+      Type=forking
+      ExecStart=/root/questdb/bin/questdb.sh start
+      ExecStop=/root/questdb/bin/questdb.sh stop
+      User=root
+      Group=root
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable and start QuestDB service
+  ansible.builtin.systemd:
+    name: questdb
+    enabled: yes
+    state: started
+
+- name: Enable and start QuestDB service
+  ansible.builtin.systemd:
+    name: questdb
+    enabled: yes
+    state: started

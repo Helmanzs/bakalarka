@@ -1,0 +1,21 @@
+---
+- name: Query total SumSalt
+  ansible.builtin.command: >
+    /iotdb/sbin/start-cli.sh
+    -h 127.0.0.1
+    -p {{ db_port }}
+    -u {{ db_user }}
+    -pw {{ db_password }}
+    -e "SELECT sum(SumSalt) from root.sus_uk.vehicle_* GROUP BY LEVEL=0;"
+  register: query_result
+  changed_when: false
+
+- name: Capture result
+  ansible.builtin.set_fact:
+    result: "{{ (query_result.stdout_lines[3]
+      | regex_replace('[^0-9Ee+\\-.]', '')
+      ) | float }}"
+
+- name: Display result
+  ansible.builtin.debug:
+    msg: "{{  result }}"

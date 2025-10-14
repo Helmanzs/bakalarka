@@ -1,0 +1,66 @@
+---
+- name: Create table
+  community.postgresql.postgresql_query:
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"
+    login_db: "{{ login_db }}"
+    query: >
+      CREATE TABLE IF NOT EXISTS {{ collection }} (
+        orig_id          INT,
+        orig_time        TIMESTAMP,
+        orig_topic       STRING,
+        CreatedTime      TIMESTAMP,
+        GpsTime          TIMESTAMP,
+        GsmSignal        INT,
+        SatelliteCount   INT,
+        LicensePlate     STRING,
+        VehicleType      INT,
+        Company          STRING,
+        VehicleID        INT,
+        Technology       INT,
+        Ignition         INT,
+        Longitude        DOUBLE,
+        Latitude         DOUBLE,
+        SpeedGps         DOUBLE,
+        SpeedTach        DOUBLE,
+        SpeedCan         DOUBLE,
+        TachoGps         DOUBLE,
+        TachoTach        DOUBLE,
+        ModeDrive        INT,
+        SpreadingMode    INT,
+        Plow             INT,
+        Gram             INT,
+        WidthLeft        DOUBLE,
+        WidthRight       DOUBLE,
+        SumSalt          DOUBLE,
+        SumInert         DOUBLE,
+        SumBrine         DOUBLE,
+        Cuts1            INT,
+        Cuts2            INT,
+        Cuts3            INT,
+        CentralBroom     INT,
+        LeftBroom        INT,
+        RightBroom       INT,
+        Turbine          INT,
+        RunningShaft     INT,
+        LeftFlushing     INT,
+        RightFlushing    INT,
+        CentralFlushing  INT,
+        Misting          INT,
+        Pump             INT,
+        LightOn          INT,
+        ModeArrow        INT,
+        AkuVoltage       DOUBLE,
+        RampUp           INT,
+        Crash            INT,
+        TempAir          DOUBLE,
+        TempRoad         DOUBLE,
+        Revs             DOUBLE,
+        RevsExtension    INT,
+        Fuel             DOUBLE,
+        LevelPHM         DOUBLE,
+        PowerVoltage     DOUBLE,
+        Lighthouse       INT
+      ) TIMESTAMP(orig_time) PARTITION BY DAY;

@@ -1,0 +1,83 @@
+---
+- name: Create TimescaleDB extension
+  become: true
+  become_user: "{{ db_user }}"
+  community.postgresql.postgresql_ext:
+    name: timescaledb
+    login_db: "{{ login_db }}"
+
+- name: Create table
+  become: true
+  become_user: "{{ db_user }}"
+  community.postgresql.postgresql_query:
+    login_db: "{{ login_db }}"
+    query: |
+      CREATE TABLE {{ collection }} (
+        orig_id INTEGER,
+        orig_time TIMESTAMPTZ,
+        orig_topic TEXT,
+        createdtime TIMESTAMPTZ,
+        gpstime TIMESTAMPTZ NOT NULL,
+        gsmsignal SMALLINT,
+        satellitecount SMALLINT,
+        licenseplate TEXT,
+        vehicletype SMALLINT,
+        company TEXT,
+        vehicleid INTEGER,
+        technology SMALLINT,
+        ignition SMALLINT,
+        longitude DECIMAL(9,5),
+        latitude DECIMAL(8,5),
+        speedgps DECIMAL(6,2),
+        speedtach DECIMAL(6,2),
+        speedcan DECIMAL(6,2),
+        tachogps DECIMAL(6,2),
+        tachotach DECIMAL(6,2),
+        modedrive SMALLINT,
+        spreadingmode SMALLINT,
+        plow SMALLINT,
+        gram INTEGER,
+        widthleft DECIMAL(4,2),
+        widthright DECIMAL(4,2),
+        sumsalt DOUBLE PRECISION,
+        suminert DOUBLE PRECISION,
+        sumbrine DOUBLE PRECISION,
+        cuts1 SMALLINT,
+        cuts2 SMALLINT,
+        cuts3 SMALLINT,
+        centralbroom SMALLINT,
+        leftbroom SMALLINT,
+        rightbroom SMALLINT,
+        turbine SMALLINT,
+        runningshaft SMALLINT,
+        leftflushing SMALLINT,
+        rightflushing SMALLINT,
+        centralflushing SMALLINT,
+        misting SMALLINT,
+        pump SMALLINT,
+        lighton SMALLINT,
+        modearrow SMALLINT,
+        akuvoltage DECIMAL(4,2),
+        rampup SMALLINT,
+        crash SMALLINT,
+        tempair DECIMAL(6,2),
+        temproad DECIMAL(5,2),
+        revs DOUBLE PRECISION,
+        revsextension INTEGER,
+        fuel DECIMAL(6,2),
+        levelphm DECIMAL(6,2),
+        powervoltage DECIMAL(5,2),
+        lighthouse SMALLINT
+      );
+
+- name: Convert table to hypertable
+  become: true
+  become_user: "{{ db_user }}"
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -d
+      - "{{ login_db }}"
+      - -c
+      - "SELECT create_hypertable('{{ collection }}', 'gpstime');"
+  changed_when: true

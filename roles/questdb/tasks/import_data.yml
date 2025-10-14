@@ -1,0 +1,55 @@
+---
+- name: Push and extract data
+  ansible.builtin.unarchive:
+    src: "{{ data_tar }}"
+    dest: "/root/.questdb/import/"
+    mode: "0777"
+
+- name: Record start time
+  ansible.builtin.command:
+    cmd: date +%s.%N
+  register: start_time
+  changed_when: false
+
+- name: Import data
+  ansible.builtin.shell: |
+    psql postgresql://{{ db_user }}:{{ db_password }}@{{ db_host }}:{{ db_port }}/{{ login_db }} \
+    -c "COPY {{ collection }} FROM '{{ data_file }}' WITH HEADER;"
+  register: insert_time
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Wait for import to finish
+  community.postgresql.postgresql_query:
+    query: SELECT COUNT(*) AS count FROM {{ collection }};
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"
+    login_db: "{{ login_db }}"
+  register: result
+  until: (result.query_result is defined and result.query_result | length > 0 and (result.query_result[0].count | int) >= 600000)
+  retries: "{{ db_import_retries }}"
+  delay: "{{ db_import_retry_inverval }}"
+
+- name: Record end time
+  ansible.builtin.command:
+    cmd: date +%s.%N
+  register: end_time
+  changed_when: false
+
+- name: Format total duration
+  ansible.builtin.set_fact:
+    total_duration_output: >-
+      DURATION_SECONDS={{ '%.2f' | format((end_time.stdout | float) - (start_time.stdout | float)) }}
+
+- name: Register total duration
+  ansible.builtin.set_fact:
+    insert_time:
+      stderr_lines: ["{{ total_duration_output }}"]
+
+- name: Remove data file
+  ansible.builtin.file:
+    path: /root/.questdb/import/{{ data_file }}
+    state: absent

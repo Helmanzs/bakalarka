@@ -3,7 +3,7 @@
 vm_name: influxdb
 vm_packages: "{{ packages_base }}"
 
-vm_disk_size: 5GB
+vm_disk_size: 8GB
 vm_profiles: "{{ lxd_profiles_base + ['influxdb-net'] }}"
 
 # FILE VARS

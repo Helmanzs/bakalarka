@@ -1,0 +1,15 @@
+---
+- name: Query total SumSalt
+  community.mysql.mysql_query:
+    login_unix_socket: "{{ socket }}"
+    login_db: "{{ login_db }}"
+    query: "SELECT CAST(SUM(SumSalt) AS DOUBLE) AS TotalSalt FROM {{ db_table }};"
+  register: query_result
+
+- name: Capture result
+  ansible.builtin.set_fact:
+    result: "{{ query_result.query_result[0][0]['TotalSalt'] | float }}"
+
+- name: Display result
+  ansible.builtin.debug:
+    msg: "{{ result }}"

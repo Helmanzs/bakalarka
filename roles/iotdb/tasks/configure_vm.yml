@@ -1,0 +1,74 @@
+---
+- name: Install Apache IoTDB
+  ansible.builtin.pip:
+    name: apache-iotdb
+    executable: pip3
+    extra_args: --break-system-packages
+
+- name: Disable UFW
+  ansible.builtin.service:
+    name: ufw
+    state: stopped
+    enabled: false
+
+- name: Configure sysctl parameters
+  ansible.builtin.copy:
+    dest: /etc/sysctl.conf
+    content: |
+      # BEGIN ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+      {% for item in vm_sysctl_params %}
+      {{ item.name }} = {{ item.value }}
+      {% endfor %}
+      # END ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+
+- name: Apply sysctl settings
+  ansible.builtin.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    reload: yes
+    sysctl_set: yes
+  loop: "{{ vm_sysctl_params }}"
+
+- name: Temporarily disable and re-enable swap
+  block:
+    - name: Disable swap
+      ansible.builtin.command: swapoff -a
+      register: swapoff_result
+      failed_when:
+        - swapoff_result.rc != 0
+        - "'swapoff: not found' not in swapoff_result.stderr"
+      changed_when: true
+
+    - name: Enable swap
+      ansible.builtin.command: swapon -a
+      register: swapon_result
+      failed_when:
+        - swapon_result.rc != 0
+        - "'swapon: not found' not in swapon_result.stderr"
+      changed_when: true
+
+- name: Configure file limits
+  ansible.builtin.blockinfile:
+    path: /etc/security/limits.conf
+    block: "{{ vm_file_limits }}"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - FILE LIMITS"
+
+- name: Set JAVA_HOME in bashrc
+  ansible.builtin.blockinfile:
+    path: ~/.bashrc
+    block: |
+      export JAVA_HOME={{ vm_openjdk_path }}
+      export PATH=$JAVA_HOME/bin:$PATH
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - JAVA CONFIG"
+
+- name: Source bashrc
+  ansible.builtin.shell: source ~/.bashrc
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Apply network settings
+  ansible.builtin.command:
+    cmd: sysctl -p
+  changed_when: true

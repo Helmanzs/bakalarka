@@ -1,0 +1,22 @@
+---
+- name: Copy data
+  ansible.builtin.copy:
+    src: "{{ data_gz }}"
+    dest: "{{ import_dir }}/{{ data_gz }}"
+    mode: "0644"
+
+- name: Import data
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    clickhouse-client \
+      -q "INSERT INTO {{ db_table }} FORMAT CSVWithNames COMPRESSION 'gzip'" \
+      < {{ import_dir }}/{{ data_gz }}
+  args:
+    executable: /bin/bash
+  register: insert_time
+  changed_when: true
+
+- name: Remove data file
+  ansible.builtin.file:
+    path: "{{ import_dir }}/{{ data_file }}"
+    state: absent

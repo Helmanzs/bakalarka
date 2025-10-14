@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 HOSTS_FILE="vars/hosts"
+TESTS_FILE="vars/test_types.yml"
 
-mapfile -t databases < <(tail -n +2 "$HOSTS_FILE" | sed '/^\s*$/d')
+mapfile -t databases < <(grep -vE '^\s*(#|\[|$)' "$HOSTS_FILE")
 
-caches=("cold" "hot")
-test_types=("single_point")
+mapfile -t test_types < <(grep '^- ' "$TESTS_FILE" | sed 's/^- //')
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -17,17 +17,13 @@ while [[ $# -gt 0 ]]; do
       DATABASE="$2"
       shift 2
       ;;
-    -cache|-c)
-      CACHE="$2"
-      shift 2
-      ;;
     -test_type|-test)
       TEST_TYPE="$2"
       shift 2
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [-database <name>|*] [-cache <name>|*] [-test_type <name>|*]"
+      echo "Usage: $0 [-database <name>|*] [-test_type <name>|*]"
       exit 1
       ;;
   esac
@@ -80,7 +76,6 @@ ask_for_input() {
 if [[ -z "$DATABASE" || -z "$CACHE" || -z "$TEST_TYPE" ]]; then
   echo "Available options:"
   echo "  - databases: ${databases[*]}"
-  echo "  - caches: ${caches[*]}"
   echo "  - test types: ${test_types[*]}"
   echo
 fi
@@ -91,11 +86,6 @@ if [[ -z "$DATABASE" ]]; then
 fi
 echo
 
-if [[ -z "$CACHE" ]]; then
-    ask_for_input "cache" "${caches[@]}"
-    CACHE="$REPLY"
-fi
-echo
 
 if [[ -z "$TEST_TYPE" ]]; then
     ask_for_input "test type" "${test_types[@]}"
@@ -104,7 +94,6 @@ fi
 echo
 
 [[ "$DATABASE" == "*" ]] && DATABASES=("${databases[@]}") || DATABASES=("$DATABASE")
-[[ "$CACHE" == "*" ]] && CACHES=("${caches[@]}") || CACHES=("$CACHE")
 [[ "$TEST_TYPE" == "*" ]] && TEST_TYPES=("${test_types[@]}") || TEST_TYPES=("$TEST_TYPE")
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -116,36 +105,33 @@ if [[ ! -d "$RESULTS_DIR" ]]; then
 fi
 
 for db in "${DATABASES[@]}"; do
-  for cache in "${CACHES[@]}"; do
-    for test in "${TEST_TYPES[@]}"; do
+  for test in "${TEST_TYPES[@]}"; do
+    PLAYBOOK_PATH="$SCRIPT_DIR/tests/$db/$test.yml"
 
-      PLAYBOOK_PATH="$db/tests/$cache/$test.yml"
+    if [[ ! -f "$PLAYBOOK_PATH" ]]; then
+      echo "Skipping: Playbook does not exist at $PLAYBOOK_PATH"
+      continue
+    fi
 
-      if [[ ! -f "$PLAYBOOK_PATH" ]]; then
-        echo "Skipping: Playbook does not exist at $PLAYBOOK_PATH"
-        continue
+    echo
+    echo "========================================="
+    echo "Running playbook:"
+    echo "  Database: $db"
+    echo "  Test:     $test"
+    echo "========================================="
+    echo
+
+    echo "Launching in 3 seconds. Press 'X' to cancel."
+    for i in 3 2 1; do
+      echo "$i..."
+      read -t 1 -n 1 key
+      if [[ "$key" =~ [Xx] ]]; then
+        echo "Cancelled by user."
+        exit 0
       fi
-
-      echo
-      echo "========================================="
-      echo "Running playbook:"
-      echo "  Database: $db"
-      echo "  Cache:    $cache"
-      echo "  Test:     $test"
-      echo "========================================="
-      echo
-
-      echo "Launching in 3 seconds. Press 'X' to cancel."
-      for i in 3 2 1; do
-        echo "$i..."
-        read -t 1 -n 1 key
-        if [[ "$key" =~ [Xx] ]]; then
-          echo "Cancelled by user."
-          exit 0
-        fi
-      done
-
-      ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" -e "is_master_run=true database=$db cache=$cache test_type=$test results_dir=$RESULTS_DIR"
     done
+
+    ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" \
+      -e "is_master_run=true database=$db test_type=$test results_dir=$RESULTS_DIR"
   done
 done

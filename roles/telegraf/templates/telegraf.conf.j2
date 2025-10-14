@@ -1,0 +1,24 @@
+[agent]
+  interval = "1s"
+  round_interval = true
+  metric_batch_size = 1000
+  metric_buffer_limit = 10000
+  collection_jitter = "0s"
+  flush_interval = "10s"
+  flush_jitter = "0s"
+  precision = "1s"
+  hostname = "{{ inventory_hostname }}"
+  omit_hostname = false
+
+# INPUT PLUGINS
+{% for plugin in telegraf_plugins %}
+[[inputs.{{ plugin }}]]
+{% endfor %}
+
+
+# OUTPUT PLUGINS
+[[outputs.influxdb_v2]]
+  urls = ["http://{{ influxdb_host }}:{{ influxdb_port }}"]
+  bucket = "{{ influxdb_database }}"
+  organization = "_"
+  token = "{{ influx_token }}"

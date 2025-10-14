@@ -14,7 +14,7 @@
   changed_when: vm_start.changed
 
 - name: Get VM IP Address
-  ansible.builtin.include_tasks: "{{ ansible_common_dir }}/elemental/get_ip.yml"
+  ansible.builtin.include_tasks: "{{ ansible_common_dir }}/helper/get_ip.yml"
   vars:
     max_attempts: 6
     retry_delay: 5

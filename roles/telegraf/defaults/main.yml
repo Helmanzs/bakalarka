@@ -1,0 +1,11 @@
+---
+influxdb_host: "10.187.240.1"
+influxdb_port: 8086
+influxdb_database: "metrics"
+telegraf_plugins:
+  - cpu
+  - mem
+  - disk
+  - diskio
+  - net
+  - system

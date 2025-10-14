@@ -1,0 +1,14 @@
+---
+- name: Query total SumSalt
+  ansible.builtin.shell: |
+    clickhouse-client -q "SELECT sum(SumSalt) FROM {{ db_table }}"
+  register: query_result
+  changed_when: false
+
+- name: Capture result
+  ansible.builtin.set_fact:
+    result: "{{ query_result.stdout_lines[0] | float }}"
+
+- name: Display total SumSalt
+  ansible.builtin.debug:
+    msg: "{{ result }}"

@@ -1,0 +1,2 @@
+---
+temp_dir: "/tmp/{{ data_file_name }}_temp"

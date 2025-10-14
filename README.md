@@ -10,10 +10,7 @@ playbook/
 ├── results/
 ├── <db_name>/
 │   └── tests/
-│       ├── hot/
-│       │   └── single-point.yml
-│       └── cold/
-│           └── single-point.yml
+│         └── single-point.yml
 ├── common/
 │   └── vm_init_test.yml
 └── ...

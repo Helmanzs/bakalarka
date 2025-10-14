@@ -1,0 +1,30 @@
+---
+- name: Init OpenTSDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/opentsdb.yml"
+  tasks:
+    - name: Init VM
+      import_role:
+        name: common
+
+- name: Common config
+  hosts: opentsdb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: vm_config
+
+- name: Setup OpenTSDB
+  hosts: opentsdb
+  roles:
+    - opentsdb
+
+- name: Common config
+  hosts: opentsdb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: post_processing

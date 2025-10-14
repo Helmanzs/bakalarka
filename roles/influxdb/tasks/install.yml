@@ -1,0 +1,47 @@
+---
+- name: Download InfluxDB3
+  ansible.builtin.unarchive:
+    src: "{{ db_tar_url }}"
+    dest: /influxdb/
+    extra_opts:
+      - "--strip-components=1"
+    remote_src: true
+    mode: "0777"
+
+- name: Update PATH environment variable
+  ansible.builtin.lineinfile:
+    path: /root/.bashrc
+    line: 'export PATH="$PATH:/root/.influxdb"'
+    create: true
+    mode: "0600"
+
+- name: Create systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/influxdb3.service
+    content: |
+      [Unit]
+      Description=InfluxDB 3 Service
+      After=network.target
+
+      [Service]
+      User=root
+      ExecStart=/root/.influxdb/influxdb3 serve \
+        --node-id=node0 \
+        --http-bind=0.0.0.0:{{ db_port }} \
+        --object-store=file \
+        --data-dir /root/.influxdb/data
+      Restart=always
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start InfluxDB service
+  ansible.builtin.systemd:
+    name: influxdb3
+    state: started
+    enabled: true

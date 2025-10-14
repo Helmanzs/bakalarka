@@ -16,7 +16,7 @@ group_vars/*.vault
 host_vars/*.vault
 
 # Ignore roles downloaded from Galaxy
-roles/*/
+# roles/*/
 !roles/requirements.yml
 
 # Shell scripts

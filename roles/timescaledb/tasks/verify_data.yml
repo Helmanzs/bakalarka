@@ -1,0 +1,16 @@
+---
+- name: Query total SumSalt
+  become: true
+  become_user: "{{ db_user }}"
+  community.postgresql.postgresql_query:
+    login_db: "{{ login_db }}"
+    query: "SELECT sum(sumsalt) FROM {{ collection }};"
+  register: query_result
+
+- name: Capture result
+  ansible.builtin.set_fact:
+    result: "{{ query_result.query_result[0].sum }}"
+
+- name: Display result
+  ansible.builtin.debug:
+    msg: "{{ result }}"

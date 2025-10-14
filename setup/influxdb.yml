@@ -1,0 +1,30 @@
+---
+- name: Init InfluxDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/influxdb.yml"
+  tasks:
+    - name: Init VM
+      import_role:
+        name: common
+
+- name: Common config
+  hosts: influxdb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: vm_config
+
+- name: Setup InfluxDB
+  hosts: influxdb
+  roles:
+    - influxdb
+
+- name: Common config
+  hosts: influxdb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: post_processing

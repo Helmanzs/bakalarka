@@ -1,0 +1,15 @@
+---
+- name: Configure VM
+  ansible.builtin.include_tasks: "configure_vm.yml"
+    
+- name: Install and Configure IoTDB
+  ansible.builtin.include_tasks: "install.yml"
+    
+- name: Setup database
+  ansible.builtin.include_tasks: "setup_database.yml"
+
+- name: Import data into IoTDB
+  ansible.builtin.include_tasks: "import_data.yml"
+    
+- name: Verify data import
+  ansible.builtin.include_tasks: "verify_import.yml"

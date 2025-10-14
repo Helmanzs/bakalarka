@@ -1,0 +1,30 @@
+---
+- name: Init MariaDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/mariadb.yml"
+  tasks:
+    - name: Init VM
+      import_role:
+        name: common
+
+- name: Common config
+  hosts: mariadb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: vm_config
+
+- name: Setup MariaDB
+  hosts: mariadb
+  roles:
+    - mariadb
+
+- name: Common config
+  hosts: mariadb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: post_processing

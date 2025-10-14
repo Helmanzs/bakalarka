@@ -1,0 +1,25 @@
+- name: Query total SumSalt
+  community.mongodb.mongodb_shell:
+    login_host: "{{ login_host }}"
+    login_port: "{{ login_port }}"
+    db: "{{ login_db }}"
+    eval: |
+      db.{{ collection }}.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalSumSalt: { $sum: "$SumSalt" }
+          }
+        }
+      ]).toArray()
+    transform: json
+  register: query_result
+  changed_when: false
+
+- name: Capture result
+  ansible.builtin.set_fact:
+    result: "{{ query_result.transformed_output[0].totalSumSalt }}"
+
+- name: Display result
+  ansible.builtin.debug:
+    msg: "{{ result }}"

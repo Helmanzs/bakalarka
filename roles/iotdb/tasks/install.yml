@@ -1,0 +1,134 @@
+---
+- name: Get ram
+  ansible.builtin.set_fact:
+    total_ram: "{{ hostvars['localhost'].ram_limit | regex_replace('[^0-9]', '') | int }}"
+
+- name: Calculate heap size
+  ansible.builtin.set_fact:
+    confignode_heap: >-
+      {% set heap = ((total_ram | int) * 0.2) | int %}
+      {% if heap < 1 %}
+        1
+      {% elif heap > 2 %}
+        2
+      {% else %}
+        {{ heap }}
+      {% endif %}
+
+    datanode_heap: >-
+      {% set heap =((total_ram | int) * 0.4) | int %}
+      {% if heap < 2 %}
+        2
+      {% elif heap > 8 %}
+        8
+      {% else %}
+        {{ heap }}
+      {% endif %}
+
+- name: Create required directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - { path: "/data/iotdb" }
+    - { path: "/iotdb/" }
+
+- name: Download IoTDB
+  ansible.builtin.unarchive:
+    src: "{{ db_zip_url }}"
+    dest: /tmp/
+    remote_src: true
+    mode: "0755"
+
+- name: Move IoTDB
+  ansible.builtin.shell: |
+    mv /tmp/apache-iotdb*/** /iotdb/
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Configure ConfigNode memory
+  ansible.builtin.lineinfile:
+    path: /iotdb/conf/confignode-env.sh
+    line: 'MAX_HEAP_SIZE="{{ confignode_heap }}"'
+    state: present
+
+- name: Configure DataNode memory
+  ansible.builtin.lineinfile:
+    path: /iotdb/conf/datanode-env.sh
+    line: 'MAX_HEAP_SIZE="{{ datanode_heap }}"'
+    state: present
+
+- name: Configure IoTDB system properties
+  ansible.builtin.replace:
+    path: /iotdb/conf/iotdb-system.properties
+    regexp: |
+      ^cluster_name=.*
+      ^cn_internal_address=.*
+      ^dn_rpc_address=.*
+      ^dn_internal_address=.*
+    replace: |
+      cluster_name={{ iotdb_cluster_name }}
+      cn_internal_address={{ iotdb_cn_internal_address }}
+      dn_rpc_address={{ iotdb_dn_rpc_address }}
+      dn_internal_address={{ iotdb_dn_internal_address }}
+
+- name: Create systemd service for ConfigNode
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/confignode.service
+    content: |
+      [Unit]
+      Description=ConfigNode Service
+      After=network.target
+
+      [Service]
+      Type=forking
+      ExecStart=/iotdb/sbin/start-confignode.sh -d
+      ExecStop=/iotdb/sbin/stop-confignode.sh
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0600"
+
+- name: Create systemd service for DataNode
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/datanode.service
+    content: |
+      [Unit]
+      Description=DataNode Service
+      After=network.target
+
+      [Service]
+      Type=forking
+      ExecStart=/iotdb/sbin/start-datanode.sh -d
+      ExecStop=/iotdb/sbin/stop-datanode.sh
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0600"
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start ConfigNode service
+  ansible.builtin.systemd:
+    name: confignode.service
+    enabled: true
+    state: started
+
+- name: Enable and start DataNode service
+  ansible.builtin.systemd:
+    name: datanode.service
+    enabled: true
+    state: started
+
+- name: Wait for IoTDB RPC service to be available
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    delay: 5
+    timeout: 60

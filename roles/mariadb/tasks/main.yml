@@ -1,0 +1,10 @@
+---
+- name: Setup database
+  ansible.builtin.include_tasks: "setup_database.yml"
+
+- name: Import data into MariaDB
+  ansible.builtin.include_tasks: "import_data.yml"
+
+- name: Verify data import
+  ansible.builtin.include_tasks: "verify_import.yml"
+

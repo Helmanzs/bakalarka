@@ -42,12 +42,12 @@
         local_result:
           test_type: "{{ hostvars['localhost'].test_type }}"
           host: "{{ inventory_hostname }}"
+          datetime: "{{ ansible_date_time.iso8601 }}"
           query_duration_ms: "{{ query_duration_ms | default('0') }}"
           rows_read: "{{ rows_read | default('NA') }}"
           rows_returned: "{{ rows_returned | default('0') }}"
           ram_limit: "{{ hostvars['localhost'].ram_limit }}"
           cpu_limit: "{{ hostvars['localhost'].cpu_limit }}"
-          cache: "{{ hostvars['localhost'].cache }}"
 
     - name: Append this host’s result to NDJSON file
       delegate_to: localhost

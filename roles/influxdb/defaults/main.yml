@@ -1,0 +1,3 @@
+---
+import_dir: "/tmp"
+temp_dir: "/tmp/{{ data_file_name }}_temp"

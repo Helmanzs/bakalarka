@@ -1,0 +1,38 @@
+---
+- name: Copy data
+  ansible.builtin.copy:
+    src: "{{ data_tar }}"
+    dest: "{{ import_dir }}/{{ data_tar }}"
+    mode: "0644"
+
+- name: Extract data
+  ansible.builtin.shell: |
+    tar --extract --use-compress-program=pigz \
+    --file="{{ import_dir }}/{{ data_tar }}" \
+    --directory="{{ import_dir }}"
+    rm -f "{{ import_dir }}/{{ data_tar }}"
+    chmod -R 0644 "{{ import_dir }}"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Remove CSV header
+  ansible.builtin.shell: |
+    tail -n +2 {{ import_dir }}/{{ data_file }}> {{ import_dir }}/tmp.csv
+    mv {{ import_dir }}/tmp.csv {{ import_dir }}/{{ data_file }}
+  args:
+    executable: /bin/bash
+
+- name: Import data
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    cpimport -s ',' {{ login_db }} {{ db_table }} {{ import_dir }}/{{ data_file }}
+  args:
+    executable: /bin/bash
+  register: insert_time
+  changed_when: true
+
+- name: Remove data file
+  ansible.builtin.file:
+    path: "{{ import_dir }}/{{ data_file }}"
+    state: absent

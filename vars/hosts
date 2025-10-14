@@ -1,7 +1,6 @@
 [databases]
 mariadb
 questdb
-opentsdb
 influxdb
 iotdb
 clickhousedb

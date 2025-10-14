@@ -1,0 +1,12 @@
+---
+- name: Install ClickHouseDB
+  ansible.builtin.include_tasks: "install.yml"
+
+- name: Setup database
+  ansible.builtin.include_tasks: "setup_database.yml"
+
+- name: Import data
+  ansible.builtin.include_tasks: "import_data.yml"
+
+- name: Verify import
+  ansible.builtin.include_tasks: "verify_import.yml"

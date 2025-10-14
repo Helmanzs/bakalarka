@@ -1,0 +1,14 @@
+---
+- name: Create database
+  community.mongodb.mongodb_shell:
+    login_host: "{{ login_host }}"
+    login_port: "{{ login_port }}"
+    db: "{{ login_db }}"
+    eval: |
+      db.createCollection('{{ collection }}', {
+        timeseries: {
+          timeField: "GpsTime",
+          metaField: "VehicleID",
+          granularity: "seconds"
+        }
+      })

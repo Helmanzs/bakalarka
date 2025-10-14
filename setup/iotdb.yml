@@ -1,0 +1,30 @@
+---
+- name: Init IoTDB VM
+  hosts: localhost
+  vars_files:
+    - "{{ ansible_vars_dir }}/host_vars/iotdb.yml"
+  tasks:
+    - name: Init VM
+      import_role:
+        name: common
+
+- name: Common config
+  hosts: iotdb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: vm_config
+
+- name: Setup IoTDB
+  hosts: iotdb
+  roles:
+    - iotdb
+
+- name: Common config
+  hosts: iotdb
+  tasks:
+    - name: Setup config
+      import_role:
+        name: common
+        tasks_from: post_processing

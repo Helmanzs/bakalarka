@@ -55,7 +55,6 @@
   ansible.builtin.import_playbook: mongodb/init.yml
   ignore_errors: yes
 
-
 #- name: Run OpenTSDB
 #  ansible.builtin.import_playbook: opentsdb/init.yml
 

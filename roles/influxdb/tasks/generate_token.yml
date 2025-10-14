@@ -1,0 +1,24 @@
+---
+- name: Generate InfluxDB3 admin token
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      /root/.influxdb/influxdb3 create token --admin \
+        | sed 's/\x1b\[[0-9;]*m//g' \
+        | sed -n 's/^Token: //p'
+    executable: /bin/bash
+  register: token_result
+  changed_when:
+    - token_result is succeeded
+    - token_result.stdout | length > 0
+
+- name: Set influxdb_token fact
+  ansible.builtin.set_fact:
+    influxdb_token: "{{ token_result.stdout }}"
+
+- name: Set INFLUXDB3_AUTH_TOKEN in .bashrc
+  ansible.builtin.lineinfile:
+    path: /root/.bashrc
+    line: 'export INFLUXDB3_AUTH_TOKEN="{{ token_result.stdout }}"'
+    create: true
+    mode: "0600"

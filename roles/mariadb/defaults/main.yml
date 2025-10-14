@@ -1,0 +1,3 @@
+---
+import_dir: "/var/lib/mysql-files"
+socket: "/var/run/mysqld/mysqld.sock"

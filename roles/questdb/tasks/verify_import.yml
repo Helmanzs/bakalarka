@@ -1,0 +1,17 @@
+- name: Query total SumSalt
+  community.postgresql.postgresql_query:
+    query: SELECT sum(sumsalt) FROM {{ collection }};
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"
+    login_db: "{{ login_db }}"
+  register: query_result
+
+- name: Capture result
+  ansible.builtin.set_fact:
+    result: "{{ query_result.query_result[0].sum | float }}"
+
+- name: Display result
+  ansible.builtin.debug:
+    msg: "{{ result }}"
