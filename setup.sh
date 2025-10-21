@@ -2,8 +2,7 @@
 
 HOSTS_FILE="vars/hosts"
 
-# Read all non-empty lines after the header (first line)
-mapfile -t DATABASES < <(tail -n +2 "$HOSTS_FILE" | sed '/^\s*$/d')
+DATABASES=($(yq eval '.all.children.databases.hosts | keys | .[]' "$HOSTS_FILE"))
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="$SCRIPT_DIR/results"
@@ -38,5 +37,5 @@ for db in "${DATABASES[@]}"; do
     fi
   done
 
-  ansible-playbook "$PLAYBOOK_PATH" -e "is_master_run=true database=$db test_type='insert' results_dir=$RESULTS_DIR"
+  ansible-playbook "$PLAYBOOK_PATH" -e "database=$db"
 done

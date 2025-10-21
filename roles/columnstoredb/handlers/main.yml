@@ -1,2 +1,12 @@
 ---
-# handlers file for columnstoredb
+- name: Apply sysctl settings
+  ansible.builtin.command: sysctl --system
+
+- name: Restart services
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: restarted
+  loop:
+    - mariadb
+    - mariadb-columnstore
+  listen: "Restart services"

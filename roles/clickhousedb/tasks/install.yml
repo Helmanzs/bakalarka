@@ -6,24 +6,35 @@
     state: present
     validate_certs: true
 
-- name: Add repository
+- name: Add ClickHouse repository
   ansible.builtin.apt_repository:
     repo: >
-      deb [signed-by={{ keyring }}
-            arch=amd64]
+      deb [signed-by={{ keyring }} arch=amd64]
       https://packages.clickhouse.com/deb lts main
     filename: clickhouse
+  register: repo_result
+  retries: 10
+  delay: 10
+  until: repo_result is succeeded
 
-- name: Install ClickHouse
+- name: Install ClickHouse packages
   ansible.builtin.apt:
-    name: 
+    name:
       - clickhouse-server
       - clickhouse-client
+    state: present
+    update_cache: true
+    install_recommends: false
+    lock_timeout: 300
   environment:
     DEBIAN_FRONTEND: noninteractive
+  register: result
+  retries: 5
+  delay: 10
+  until: result is succeeded
 
-- name: Start ClickHouse service
+- name: Enable and start ClickHouse service
   ansible.builtin.service:
     name: clickhouse-server
-    state: started
     enabled: true
+    state: started

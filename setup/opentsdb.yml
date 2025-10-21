@@ -1,30 +1,17 @@
 ---
-- name: Init OpenTSDB VM
-  hosts: localhost
-  vars_files:
-    - "{{ ansible_vars_dir }}/host_vars/opentsdb.yml"
-  tasks:
-    - name: Init VM
-      import_role:
-        name: common
-
-- name: Common config
-  hosts: opentsdb
-  tasks:
-    - name: Setup config
-      import_role:
-        name: common
-        tasks_from: vm_config
-
 - name: Setup OpenTSDB
   hosts: opentsdb
+  gather_facts: false
   roles:
+    - telegraf
     - opentsdb
 
-- name: Common config
-  hosts: opentsdb
-  tasks:
-    - name: Setup config
-      import_role:
-        name: common
-        tasks_from: post_processing
+  post_tasks:
+    - name: Stop VM
+      community.general.lxd_container:
+        name: "{{ vm_name }}"
+        state: stopped
+        type: "{{ lxd_type_base }}"
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost

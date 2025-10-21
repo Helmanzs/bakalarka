@@ -1,6 +1,10 @@
 ---
 - name: Get Query timing
   block:
+  - name: Increment attempts counter
+    ansible.builtin.set_fact:
+      attempt_number: "{{ attempt_number | d(0) | int + 1 }}"
+
   - name: Capture query timing
     ansible.builtin.shell: |
       clickhouse-client \
@@ -23,8 +27,8 @@
       latency_parts: "{{ timing_results.stdout_lines[0].split('\t') }}"
 
   - name: Extract individual metrics as facts
-    ansible.builtin.set_fact:
-      query_duration_ms: "{{ latency_parts[0] | float }}"
+    ansible.builtin.set_fact: 
+      query_duration_ms: "{{ (latency_parts[0] | float ) * 0.001}}"
       rows_read: "{{ latency_parts[1] | int }}"
       rows_returned: "{{ latency_parts[2] | int }}"
   

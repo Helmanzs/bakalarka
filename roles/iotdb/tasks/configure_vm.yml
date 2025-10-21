@@ -12,23 +12,16 @@
     enabled: false
 
 - name: Configure sysctl parameters
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: sysctl.conf.j2
     dest: /etc/sysctl.conf
-    content: |
-      # BEGIN ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
-      {% for item in vm_sysctl_params %}
-      {{ item.name }} = {{ item.value }}
-      {% endfor %}
-      # END ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+    owner: root
+    group: root
+    mode: '0644'
 
 - name: Apply sysctl settings
-  ansible.builtin.sysctl:
-    name: "{{ item.name }}"
-    value: "{{ item.value }}"
-    state: present
-    reload: yes
-    sysctl_set: yes
-  loop: "{{ vm_sysctl_params }}"
+  ansible.builtin.command:
+    cmd: sysctl --system
 
 - name: Temporarily disable and re-enable swap
   block:

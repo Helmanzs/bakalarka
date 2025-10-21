@@ -1,65 +1,31 @@
 ---
-- name: Include ram profile
-  ansible.builtin.include_vars:
-    file: "{{ ansible_resources_dir }}/ram/{{ ram_profile | default(default_ram_profile) }}.yml"
+- name: Get CPU and RAM profiles
+  ansible.builtin.include_tasks: "include_profiles.yml"
 
-- name: Include cpu profile
-  ansible.builtin.include_vars:
-    file: "{{ ansible_resources_dir }}/cpu/{{ cpu_profile | default(default_cpu_profile) }}.yml"
+- block:
+    - name: Create LXD VM
+      ansible.builtin.include_tasks: "create_vm.yml"
 
-- name: Get VM state
-  ansible.builtin.command:
-    cmd: "lxc info {{ vm_name }}"
-  register: vm_state
-  failed_when: false
-  changed_when: false
+    - name: Setup VM 
+      ansible.builtin.include_tasks: "vm_config.yml"
+  when: create | default(true)
 
-- name: Stop the VM
-  ansible.builtin.command:
-    cmd: "lxc stop {{ vm_name }} --force"
-  when: vm_state.rc == 0
-  failed_when: false
-  changed_when: false
+- name: Start VM
+  ansible.builtin.include_tasks: "start_vm.yml"
+  when: not create | default(false)
 
-- name: Delete LXD VM if it exists
-  community.general.lxd_container:
-    name: "{{ vm_name }}"
-    state: absent
-  when: vm_state.rc == 0
+# - name: Get VM IP Address
+#   ansible.builtin.include_tasks: "get_ip.yml"
+#   vars:
+#     max_attempts: 6
+#     retry_delay: 5
 
-- name: Launch LXD VM
-  community.general.lxd_container:
-    name: "{{ vm_name }}"
-    type: "{{ lxd_type_base }}"
-    state: started
-    source:
-      type: image
-      mode: pull
-      server: "{{ lxd_image_server_base }}"
-      protocol: "{{ lxd_image_protocol_base }}"
-      alias: "{{ lxd_image_base }}"
-    profiles: "{{ vm_profiles }}"
-    config:
-      limits.memory: "{{ ram_limit }}"
-      limits.cpu: "{{ cpu_limit }}"
-    devices:
-      root:
-        type: disk
-        pool: default
-        path: /
-        size: "{{ vm_disk_size }}"
-    wait_for_ipv4_addresses: true
-    timeout: 600
+# - name: Wait for SSH to be available
+#   ansible.builtin.wait_for:
+#     host: "{{ vm_ip }}"
+#     port: 22
+#     timeout: 300
+#     delay: 5
+#   delegate_to: localhost
 
-- name: Get VM IP Address
-  ansible.builtin.include_tasks: "get_ip.yml"
-  vars:
-    max_attempts: 6
-    retry_delay: 5
 
-- name: Wait for SSH to be available
-  ansible.builtin.wait_for:
-    host: "{{ vm_ip }}"
-    port: 22
-    timeout: 300
-    delay: 5

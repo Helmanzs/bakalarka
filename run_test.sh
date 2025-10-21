@@ -3,13 +3,18 @@
 HOSTS_FILE="vars/hosts"
 TESTS_FILE="vars/test_types.yml"
 
-mapfile -t databases < <(grep -vE '^\s*(#|\[|$)' "$HOSTS_FILE")
+# Extract databases and test types
+DATABASES=($(yq eval '.all.children.databases.hosts | keys | .[]' "$HOSTS_FILE"))
+TEST_TYPES=($(yq eval '.test_types | keys | .[]' "$TESTS_FILE"))
 
-mapfile -t test_types < <(grep '^- ' "$TESTS_FILE" | sed 's/^- //')
+# Initialize variables
+ANSIBLE_VERBOSITY=""
+DATABASE=""
+TEST_TYPE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-     -v|-vv|-vvv|-vvvv)
+    -v|-vv|-vvv|-vvvv)
       ANSIBLE_VERBOSITY="$1"
       shift
       ;;
@@ -73,28 +78,40 @@ ask_for_input() {
   exit 1
 }
 
-if [[ -z "$DATABASE" || -z "$CACHE" || -z "$TEST_TYPE" ]]; then
+# Show available options if nothing was specified
+if [[ -z "$DATABASE" || -z "$TEST_TYPE" ]]; then
   echo "Available options:"
-  echo "  - databases: ${databases[*]}"
-  echo "  - test types: ${test_types[*]}"
+  echo "  - databases: ${DATABASES[*]}"
+  echo "  - test types: ${TEST_TYPES[*]}"
   echo
 fi
 
+# Prompt for database if not specified
 if [[ -z "$DATABASE" ]]; then
-    ask_for_input "database" "${databases[@]}"
+    ask_for_input "database" "${DATABASES[@]}"
     DATABASE="$REPLY"
 fi
 echo
 
-
+# Prompt for test type if not specified
 if [[ -z "$TEST_TYPE" ]]; then
-    ask_for_input "test type" "${test_types[@]}"
+    ask_for_input "test type" "${TEST_TYPES[@]}"
     TEST_TYPE="$REPLY"
 fi
 echo
 
-[[ "$DATABASE" == "*" ]] && DATABASES=("${databases[@]}") || DATABASES=("$DATABASE")
-[[ "$TEST_TYPE" == "*" ]] && TEST_TYPES=("${test_types[@]}") || TEST_TYPES=("$TEST_TYPE")
+# Set the arrays for looping (handle wildcard)
+if [[ "$DATABASE" == "*" ]]; then
+    DATABASES_TO_RUN=("${DATABASES[@]}")
+else
+    DATABASES_TO_RUN=("$DATABASE")
+fi
+
+if [[ "$TEST_TYPE" == "*" ]]; then
+    TEST_TYPES_TO_RUN=("${TEST_TYPES[@]}")
+else
+    TEST_TYPES_TO_RUN=("$TEST_TYPE")
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULTS_DIR="$SCRIPT_DIR/results"
@@ -104,8 +121,8 @@ if [[ ! -d "$RESULTS_DIR" ]]; then
   mkdir -p "$RESULTS_DIR"
 fi
 
-for db in "${DATABASES[@]}"; do
-  for test in "${TEST_TYPES[@]}"; do
+for db in "${DATABASES_TO_RUN[@]}"; do
+  for test in "${TEST_TYPES_TO_RUN[@]}"; do
     PLAYBOOK_PATH="$SCRIPT_DIR/tests/$db/$test.yml"
 
     if [[ ! -f "$PLAYBOOK_PATH" ]]; then
@@ -132,6 +149,6 @@ for db in "${DATABASES[@]}"; do
     done
 
     ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" \
-      -e "is_master_run=true database=$db test_type=$test results_dir=$RESULTS_DIR"
+      -e "database=$db test_type=$test results_dir=$RESULTS_DIR"
   done
 done

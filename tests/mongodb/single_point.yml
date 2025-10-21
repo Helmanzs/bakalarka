@@ -1,29 +1,37 @@
 - name: Start MongoDB VM
-  hosts: localhost
-  vars_files:
-    - "{{ ansible_vars_dir }}/host_vars/mongodb.yml"
-  tasks:
-    - name: Start VM
-      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_init.yml"
-
-- name: Execute Point Lookup Query
   hosts: mongodb
+  gather_facts: false
   vars:
     vehicle_id: "186"
     target_timestamp: "2024-12-02T17:52:54"
+
+  roles:
+    - role: common
+      create: false
+    - role: mongodb
+      create: false
+
   tasks:
-    - name: Perform indexed lookup (cold cache) and measure duration
+    - name: Set start datetime fact
+      ansible.builtin.set_fact:
+        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Perform indexed lookup
       ansible.builtin.shell: |
         /usr/bin/time -f "DURATION_SECONDS=%e" \
-        mongosh --eval 'use {{ login_db }};' \
-        --eval 'db.{{ collection }}.find({ VehicleID: {{ vehicle_id }}, GpsTime: ISODate("{{ target_timestamp }}")})'
+        mongosh --eval 'use {{ db_database }};' \
+        --eval 'db.{{ db_table }}.find({ VehicleID: {{ vehicle_id }}, GpsTime: ISODate("{{ target_timestamp }}")})'
       register: query_execution
       changed_when: false
 
+    - name: Set end datetime fact
+      ansible.builtin.set_fact:
+        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
     - name: Get number of rows returned
       ansible.builtin.shell: |
-        mongosh --eval 'use {{ login_db }};' \
-        --eval 'db.{{ collection }}.countDocuments({ VehicleID: {{ vehicle_id }}, GpsTime: ISODate("{{ target_timestamp }}")})'
+        mongosh --eval 'use {{ db_database }};' \
+        --eval 'db.{{ db_table }}.countDocuments({ VehicleID: {{ vehicle_id }}, GpsTime: ISODate("{{ target_timestamp }}")})'
       register: query_rows_returned
       changed_when: false
 
@@ -31,8 +39,7 @@
       ansible.builtin.set_fact:
         rows_returned: "{{ query_rows_returned.stdout | int }}"
 
-- name: Post processing
-  hosts: mongodb
-  tasks:
-    - name: Common post processing
-      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_post_processing.yml"
+  post_tasks:
+  - name: Post Processing
+    ansible.builtin.include_role:
+      name: post_processing

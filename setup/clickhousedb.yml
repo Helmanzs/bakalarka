@@ -1,35 +1,22 @@
 ---
-- name: Init ClickHouse VM
-  hosts: localhost
-  vars_files:
-    - "{{ ansible_vars_dir }}/host_vars/clickhousedb.yml"
-  tasks:
-    - name: Init VM
-      import_role:
-        name: common
-
-- name: Common config
-  hosts: clickhousedb
-  tasks:
-    - name: Setup config
-      import_role:
-        name: common
-        tasks_from: vm_config
-
-- name: Setup Telegraf
-  hosts: clickhousedb
-  roles:
-    - telegraf
-
 - name: Setup ClickHouseDB
   hosts: clickhousedb
+  gather_facts: false
   roles:
-    - clickhousedb
+    - common
+    
+    - role: telegraf
+      become: true
 
-- name: Common config
-  hosts: clickhousedb
-  tasks:
-    - name: Setup config
-      import_role:
-        name: common
-        tasks_from: post_processing
+    - role: clickhousedb
+      become: true
+
+  post_tasks:
+    - name: Stop VM
+      community.general.lxd_container:
+        name: "{{ inventory_hostname }}"
+        state: stopped
+        type: "{{ lxd_type_base | default('virtual-machine') }}"
+      failed_when: false
+      changed_when: false
+      delegate_to: localhost

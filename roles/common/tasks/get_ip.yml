@@ -11,10 +11,12 @@
       register: vm_state
       failed_when: false
       changed_when: false
+      delegate_to: localhost
 
     - name: Extract IP address from container
       ansible.builtin.set_fact:
         vm_ip: "{{ (vm_state.stdout | regex_findall('inet:\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+)')) | first }}"
+      delegate_to: localhost
 
   rescue:
     - name: "Fail if we reached the max of {{ max_attempts | d(3) }} attempts"

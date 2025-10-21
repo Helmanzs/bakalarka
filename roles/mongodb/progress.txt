@@ -1,0 +1,43 @@
+lxc launch ubuntu:24.04 mongodb --vm --profile default --profile mongodb-net
+lxc exec mongodb -- bash
+apt update && apt upgrade -y
+apt install gnupg curl -y
+
+curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | \
+   sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg \
+   --dearmor
+
+echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+apt update 
+apt install mongodb-org -y
+systemctl start mongod
+systemctl enable mongod
+mongosh "mongodb://localhost:27017" --eval 'use raltra'
+
+mongosh "mongodb://localhost:27017/raltra" --eval '
+db.createCollection("car_telemetry", {
+  timeseries: {
+    timeField: "GpsTime",
+    metaField: "VehicleID",
+    granularity: "seconds"
+  }
+})
+'
+lxc file push mongodb/data/raltra.json.tar.gz mongodb/tmp/
+tar -xzf /tmp/raltra.json.tar.gz -C /tmp
+rm /tmp/raltra.json.tar.gz
+
+mongoimport --uri="mongodb://localhost:27017/raltra" \
+            --collection=car_telemetry \
+            --file=/tmp/raltra.json
+
+mongosh "mongodb://localhost:27017/raltra" --eval '
+db.car_telemetry.aggregate([
+  {
+    $group: {
+      _id: null,
+      totalSumSalt: { $sum: "$SumSalt" }
+    }
+  }
+])
+'

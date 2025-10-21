@@ -1,33 +1,28 @@
 ---
-- name: Create cross_engine user
+- name: "Create {{ db_user }} user"
   community.mysql.mysql_user:
-    name: cross_engine
-    password: cross_engine
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
     host: "{{ item }}"
-    priv: "*.*:SELECT,PROCESS"
+    priv: "{{ db_privelages | default('*.*:SELECT')}}"
     state: present
     login_unix_socket: "{{ socket }}"
-  loop: "{{ db_user_host }}"
+    column_case_sensitive: false
+  loop: "{{ db_user_allowed_hosts }}"
+  notify: Restart services
 
-- name: Restart services
-  ansible.builtin.service:
-    name: "{{ item }}"
-    state: restarted
-  loop:
-    - mariadb
-    - mariadb-columnstore
-
-- name: Create database
+- name: Ensure database exists
   community.mysql.mysql_db:
-    login_unix_socket: "{{ socket }}"
-    name: "{{ login_db }}"
+    name: "{{ db_database }}"
     state: present
+    login_unix_socket: "{{ socket }}"
+  notify: Restart services
 
 - name: Create ColumnStore table
   community.mysql.mysql_query:
     login_unix_socket: "{{ socket }}"
     query: |
-      CREATE TABLE {{ login_db }}.{{ db_table }} (
+      CREATE TABLE IF NOT EXISTS {{ db_database }}.{{ db_table }} (
         orig_id INT,
         orig_time DATETIME,
         orig_topic TINYTEXT,

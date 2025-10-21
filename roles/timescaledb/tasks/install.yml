@@ -6,14 +6,23 @@
     state: present
     validate_certs: yes
 
+- name: Gather distribution facts
+  ansible.builtin.setup:
+    gather_subset:
+      - distribution
+
 - name: Add TimescaleDB APT repository
   ansible.builtin.apt_repository:
     repo: >
       deb [signed-by=/usr/share/keyrings/timescaledb-archive-keyring.gpg]
-      https://packagecloud.io/timescale/timescaledb/ubuntu/ {{ ansible_lsb.codename }} main
+      https://packagecloud.io/timescale/timescaledb/ubuntu/ {{ ansible_lsb.codename | lower }} main
     filename: timescaledb.list
     state: present
     update_cache: true
+  register: repo_result
+  retries: 5
+  delay: 10
+  until: repo_result is succeeded
 
 - name: Add PostgreSQL repository
   ansible.builtin.command:
@@ -25,6 +34,10 @@
     name: postgresql-server-dev-17
     state: present
     update_cache: true
+  register: postgre_result
+  retries: 5
+  delay: 10
+  until: postgre_result is succeeded
 
 - name: Install TimescaleDB
   ansible.builtin.apt:
@@ -33,11 +46,38 @@
       - postgresql-client-17
     state: present
     update_cache: true
+  register: timescale_result
+  retries: 5
+  delay: 10
+  until: timescale_result is succeeded
 
 - name: Tune TimescaleDB configuration
   ansible.builtin.command:
     cmd: timescaledb-tune --yes
   changed_when: true
+
+- name: Change local postgres auth method from peer to trust
+  ansible.builtin.replace:
+    path: /etc/postgresql/17/main/pg_hba.conf
+    regexp: '^local\s+all\s+postgres\s+peer'
+    replace: 'local   all             postgres                                trust'
+    backup: true
+
+# - name: Ensure pg_ident.conf includes user mapping
+#   ansible.builtin.lineinfile:
+#     path: /etc/postgresql/17/main/pg_ident.conf
+#     line: "user1 {{ lookup('ansible.builtin.pipe', 'whoami') }} postgres"
+#     create: yes
+#     insertafter: EOF
+#     state: present
+
+# - name: Ensure postgres peer authentication is configured
+#   ansible.builtin.blockinfile:
+#     path: /etc/postgresql/17/main/pg_hba.conf
+#     marker: "# {mark} ANSIBLE MANAGED BLOCK: postgres peer access"
+#     block: |
+#       # TYPE  DATABASE        USER            ADDRESS                 METHOD
+#       local   all             postgres                                peer
 
 - name: Configure PostgreSQL authentication
   ansible.builtin.replace:

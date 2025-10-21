@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 LOG_FILE = "system_monitor.log"
-INTERVAL = 5  # in seconds
+INTERVAL = 5
 
 def log_system_usage():
     with open(LOG_FILE, "a") as log:

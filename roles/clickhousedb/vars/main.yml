@@ -1,25 +1,4 @@
 ---
 # VM VARS
-vm_name: clickhousedb
-vm_packages: "{{ packages_base +
-  [
-  'apt-transport-https',
-  'ca-certificates'
-  ]
-  }}"
 
-vm_disk_size: 5GB
-
-vm_profiles: "{{ lxd_profiles_base + ['clickhousedb-net'] }}"
-
-# FILE VARS
-data_file: "raltra.csv"
-
-# DB VARS
-db_host: localhost
-db_port: 9000
-db_table: car_telemetry
-db_download_url: "."
-db_key_url: "https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key"
-db_engine: "MergeTree"
 

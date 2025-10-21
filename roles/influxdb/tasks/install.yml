@@ -16,24 +16,9 @@
     mode: "0600"
 
 - name: Create systemd service
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: influxdb3.service.j2
     dest: /etc/systemd/system/influxdb3.service
-    content: |
-      [Unit]
-      Description=InfluxDB 3 Service
-      After=network.target
-
-      [Service]
-      User=root
-      ExecStart=/root/.influxdb/influxdb3 serve \
-        --node-id=node0 \
-        --http-bind=0.0.0.0:{{ db_port }} \
-        --object-store=file \
-        --data-dir /root/.influxdb/data
-      Restart=always
-
-      [Install]
-      WantedBy=multi-user.target
     mode: "0644"
 
 - name: Reload systemd

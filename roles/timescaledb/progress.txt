@@ -1,0 +1,95 @@
+lxc launch ubuntu:24.04 timescaledb --vm --profile default --profile timescaledb-net
+lxc config device add timescaledb shared disk source=~/data path=/data
+lxc exec timescaledb -- bash
+apt update && apt upgrade -y
+apt install micro gnupg postgresql-common apt-transport-https lsb-release wget -y
+echo | /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+apt install postgresql-server-dev-17 -y
+
+echo "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main" | tee /etc/apt/sources.list.d/timescaledb.list
+
+wget -O - https://packagecloud.io/timescale/timescaledb/gpgkey | gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
+
+apt update && apt upgrade -y
+apt install timescaledb-2-postgresql-17 postgresql-client-17 -y
+yes | timescaledb-tune
+sed -i.bak '/^local\s\+/s/\bpeer\b/trust/g' /etc/postgresql/17/main/pg_hba.conf
+sed -i.bak -E '/^host\s+all\s+all\s+127\.0\.0\.1\/32/s/scram-sha-256/trust/' /etc/postgresql/17/main/pg_hba.conf
+sed -i -E '/^host\s+all\s+all\s+::1\/128/s/scram-sha-256/trust/' /etc/postgresql/17/main/pg_hba.conf
+systemctl restart postgresql
+sudo -u postgres psql
+
+
+psql -h localhost -p 5432 -U postgres -d postgres -c "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+psql -h localhost -p 5432 -U postgres -d postgres -c "
+CREATE TABLE raltra
+(
+    id              BIGINT,
+    orig_id         BIGINT,
+    orig_time       TIMESTAMPTZ,
+    orig_topic      TEXT,
+    CreatedTime     TIMESTAMPTZ,
+    GpsTime         TIMESTAMPTZ NOT NULL,
+    GsmSignal       BIGINT,
+    SatelliteCount  BIGINT,
+    LicensePlate    TEXT,
+    VehicleType     BIGINT,
+    Company         TEXT,
+    VehicleID       BIGINT,
+    Technology      BIGINT,
+    Ignition        BIGINT,
+    Longitude       DOUBLE PRECISION,
+    Latitude        DOUBLE PRECISION,
+    SpeedGps        DOUBLE PRECISION,
+    SpeedTach       DOUBLE PRECISION,
+    SpeedCan        DOUBLE PRECISION,
+    TachoGps        DOUBLE PRECISION,
+    TachoTach       DOUBLE PRECISION,
+    ModeDrive       BIGINT,
+    SpreadingMode   BIGINT,
+    Plow            BIGINT,
+    Gram            BIGINT,
+    WidthLeft       DOUBLE PRECISION,
+    WidthRight      DOUBLE PRECISION,
+    SumSalt         DOUBLE PRECISION,
+    SumInert        DOUBLE PRECISION,
+    SumBrine        DOUBLE PRECISION,
+    Cuts1           BIGINT,
+    Cuts2           BIGINT,
+    Cuts3           BIGINT,
+    CentralBroom    BIGINT,
+    LeftBroom       BIGINT,
+    RightBroom      BIGINT,
+    Turbine         BIGINT,
+    RunningShaft    BIGINT,
+    LeftFlushing    BIGINT,
+    RightFlushing   BIGINT,
+    CentralFlushing BIGINT,
+    Misting         BIGINT,
+    Pump            BIGINT,
+    LightOn         BIGINT,
+    ModeArrow       BIGINT,
+    AkuVoltage      DOUBLE PRECISION,
+    RampUp          BIGINT,
+    Crash           BIGINT,
+    TempAir         DOUBLE PRECISION,
+    TempRoad        DOUBLE PRECISION,
+    Revs            DOUBLE PRECISION,
+    RevsExtension   BIGINT,
+    Fuel            DOUBLE PRECISION,
+    LevelPHM        DOUBLE PRECISION,
+    PowerVoltage    DOUBLE PRECISION,
+    Lighthouse      BIGINT
+);"
+
+psql -h localhost -p 5432 -U postgres -d postgres -c "SELECT create_hypertable('raltra', 'gpstime');"
+
+psql -h localhost -U postgres -d postgres -c "\copy raltra FROM '/data/raltra_export.csv' WITH (FORMAT csv, HEADER true)"
+
+psql -h localhost -U postgres -d postgres -c "select sum(sumsalt) from raltra;"
+
+lxc delete timescaledb --force && ansible-playbook ~/playbook/create/timescaledb/init.yml
+
+
+
+

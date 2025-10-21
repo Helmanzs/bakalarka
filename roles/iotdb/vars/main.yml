@@ -1,2 +1,40 @@
 ---
-# vars file for iotdb
+# VM VARS
+vm_name: iotdb
+vm_packages: 
+  - openjdk-17-jdk
+  - unzip
+
+
+vm_disk_size: 8GB
+vm_profiles: "{{ lxd_profiles_base }}"
+
+
+vm_file_limits: |
+  * soft nofile 65535
+  * hard nofile 65535
+
+vm_openjdk_path: "/usr/lib/jvm/java-17-openjdk-amd64"
+
+# FILE VARS
+data_file_name: "raltra"
+data_file: "raltra.csv"
+data_tar: "{{ data_file }}.tar.gz"
+script_file: "send_data.sh"
+
+# DB VARS
+db_user: root
+db_password: root
+
+db_version: "2.0.5"
+db_zip_url: "https://dlcdn.apache.org/iotdb/{{ db_version }}/apache-iotdb-{{ db_version }}-all-bin.zip"
+db_host: 127.0.0.1
+db_port: 6667
+
+login_db: raltra
+collection: car_telemetry
+
+iotdb_cluster_name: perfTestCluster
+iotdb_cn_internal_address: localhost
+iotdb_dn_rpc_address: 0.0.0.0
+iotdb_dn_internal_address: localhost

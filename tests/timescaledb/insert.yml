@@ -1,0 +1,69 @@
+- name: Start TimescaleDB VM
+  hosts: timescaledb
+  gather_facts: false
+  vars:
+    vehicle_id: "186"
+    target_timestamp: "2024-12-02T17:52:54"
+
+  roles:
+    - role: common
+      create: false
+    - role: timescaledb
+      create: false
+
+  tasks:
+    - name: Check if TimescaleDB is running
+      ansible.builtin.shell: 
+        pgrep -f postgres
+      register: timescaledb_pid
+      ignore_errors: true
+
+    - name: Start TimescaleDB service if not running
+      ansible.builtin.command: 
+        systemctl start postgresql
+      when: timescaledb_pid.rc != 0
+
+    - name: Empty TimescaleDB table before import
+      become: true
+      become_user: "{{ db_user }}"
+      community.postgresql.postgresql_query:
+        login_db: "{{ db_database }}"
+        query: "TRUNCATE TABLE {{ db_table }};"
+      register: truncate_result
+
+    - name: Push and extract data
+      ansible.builtin.unarchive:
+        src: "{{ ansible_role_dir }}/{{ vm_name }}/files/{{ data_tar }}"
+        dest: "/tmp/"
+        mode: "0777"
+    
+    - name: Set start datetime fact
+      ansible.builtin.set_fact:
+        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Import data
+      become: true
+      become_user: "{{ db_user }}"
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" \
+        psql -d {{ db_database }} -c "\
+          COPY {{ db_table }} FROM '/tmp/{{ data_file }}' WITH (FORMAT csv, HEADER true);\
+        "
+      args:
+        executable: /bin/bash
+      register: query_execution
+      changed_when: true
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: /tmp/{{ data_file }}
+        state: absent
+
+    - name: Set end datetime fact
+      ansible.builtin.set_fact:
+        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+  post_tasks:
+  - name: Post Processing
+    ansible.builtin.include_role:
+      name: post_processing

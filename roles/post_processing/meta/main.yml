@@ -1,0 +1,19 @@
+galaxy_info:
+  author: Helmanz
+  description: >
+    Common post processing to process data from benchmarking tests.
+  license: MIT
+  min_ansible_version: 2.16
+  version: 1.0.0
+  namespace: helmanz
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 24.04
+
+  galaxy_tags:
+    - ubuntu
+    - analytics
+
+dependencies: []

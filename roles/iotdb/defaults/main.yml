@@ -1,6 +1,9 @@
 ---
 import_dir: "/tmp"
 temp_dir: "/tmp/{{ data_file_name }}_temp"
-cpu_cores: "{{ hostvars['localhost'].cpu_limit | int}}"
+cpu_cores: "{{ cpu_limit | int}}"
 threads: "{{ (cpu_cores * 2) | int }}"
 parallel_imports: "{{ ((cpu_cores | int) <= 2) | ternary(2, (cpu_cores | int) * 2) }}"
+
+sysctl_vm_swappiness: "0"
+sysctl_net_core_somaxconn: "65535"

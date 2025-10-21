@@ -1,30 +1,43 @@
 - name: Start MariaDB VM
-  hosts: localhost
-  vars_files:
-    - "{{ ansible_vars_dir }}/host_vars/mariadb.yml"
-  tasks:
-    - name: Start VM
-      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_init.yml"
-
-- name: Execute Point Lookup Query
   hosts: mariadb
+  gather_facts: false
   vars:
     vehicle_id: "186"
     target_timestamp: "2024-12-02T17:52:54"
-  tasks:
 
-    - name: Perform indexed lookup (cold cache) and measure duration
+  roles:
+    - role: common
+      create: false
+    - role: mariadb
+      create: false
+
+  tasks:
+    - name: Wait for MariaDB to start
+      ansible.builtin.wait_for:
+        path: "{{ socket }}"
+        state: present
+        timeout: 60
+
+    - name: Set start datetime fact
+      ansible.builtin.set_fact:
+        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Perform indexed lookup
       ansible.builtin.shell: |
         /usr/bin/time -f "DURATION_SECONDS=%e" \
-        mysql {{ login_db }} -S /var/run/mysqld/mysqld.sock -e \
-        "SELECT VehicleID FROM {{ collection }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
+        mysql {{ db_database }} -S {{ socket }} -e \
+        "SELECT VehicleID FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
       register: query_execution
       changed_when: false
     
+    - name: Set end datetime fact
+      ansible.builtin.set_fact:
+        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+    
     - name: Get number of rows returned
       ansible.builtin.shell: |
-        mysql {{ login_db }} -S /var/run/mysqld/mysqld.sock -e \
-        "SELECT count(VehicleID) FROM {{ collection }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
+        mysql {{ db_database }} -S {{ socket }} -e \
+        "SELECT count(VehicleID) FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
       register: query_rows_returned
       changed_when: false
 
@@ -32,8 +45,7 @@
       ansible.builtin.set_fact:
         rows_returned: "{{ (query_rows_returned.stdout | regex_search('(?im)(\\d+)', '\\1'))[0] | int }}"
 
-- name: Post processing
-  hosts: mariadb
-  tasks:
-    - name: Common post processing
-      ansible.builtin.include_tasks: "{{ ansible_common_dir }}/test/vm_post_processing.yml"
+  post_tasks:
+  - name: Post Processing
+    ansible.builtin.include_role:
+      name: post_processing

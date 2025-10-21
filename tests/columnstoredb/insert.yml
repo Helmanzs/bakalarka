@@ -1,0 +1,82 @@
+- name: Start ColumnStoreDB VM
+  hosts: columnstoredb
+  gather_facts: false
+  roles:
+    - role: common
+      create: false
+    - role: columnstoredb
+      create: false
+ 
+  tasks:
+    - name: Wait for ColumnStoreDB to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 2
+        timeout: 60
+        state: started
+    
+    - name: Clear table before import
+      community.mysql.mysql_query:
+        login_unix_socket: "{{ socket }}"
+        login_db: "{{ db_database }}"
+        query: "TRUNCATE TABLE {{ db_table }};"
+      register: query_result
+      become: true
+
+    - name: Copy data
+      ansible.builtin.copy:
+        src: "{{ ansible_role_dir }}/{{ vm_name }}/files/{{ data_tar }}"
+        dest: "{{ import_dir }}/{{ data_tar }}"
+        mode: "0644"
+      become: true
+
+    - name: Extract data
+      ansible.builtin.shell: |
+        tar --extract --use-compress-program=pigz \
+        --file="{{ import_dir }}/{{ data_tar }}" \
+        --directory="{{ import_dir }}"
+        rm -f "{{ import_dir }}/{{ data_tar }}"
+        chmod -R 0644 "{{ import_dir }}"
+      args:
+        executable: /bin/bash
+      changed_when: true
+      become: true
+
+    - name: Remove CSV header
+      ansible.builtin.shell: |
+        tail -n +2 {{ import_dir }}/{{ data_file }}> {{ import_dir }}/tmp.csv
+        mv {{ import_dir }}/tmp.csv {{ import_dir }}/{{ data_file }}
+      args:
+        executable: /bin/bash
+      become: true
+
+    - name: Set start datetime fact
+      ansible.builtin.set_fact:
+        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Import data
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" \
+        cpimport -s ',' {{ db_database }} {{ db_table }} {{ import_dir }}/{{ data_file }}
+      args:
+        executable: /bin/bash
+      register: query_execution
+      changed_when: true
+      become: true
+
+    - name: Set end datetime fact
+      ansible.builtin.set_fact:
+        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: "{{ import_dir }}/{{ data_file }}"
+        state: absent
+
+  post_tasks:
+  - name: Post Processing
+    ansible.builtin.include_role:
+      name: post_processing
+
+

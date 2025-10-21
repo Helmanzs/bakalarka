@@ -1,2 +1,30 @@
 ---
-# defaults file for common
+lxd_container_type: "virtual-machine" #"{{ 'virtual-machine' if 'vms' in group_names else 'container' }}"
+lxd_image_src: "https://cloud-images.ubuntu.com/releases/"
+lxd_image: "24.04"
+lxd_profiles: ["default"]
+lxd_wait_for_ipv4: true
+lxd_timeout: 120
+lxd_container_devices:
+  eth0:
+    nictype: bridged
+    parent: lxdbr0
+    type: nic
+    ipv4.address: "{{ ansible_host }}"
+  root:
+    type: disk
+    pool: default
+    path: /
+    size: "{{ vm_disk_size }}"
+lxd_ssh_timeout: 30
+
+shared_packages:
+  - python3
+  - gnupg
+  - curl
+  - micro
+  - python3-pip
+  - tar
+  - wget
+  - pigz
+  - sudo

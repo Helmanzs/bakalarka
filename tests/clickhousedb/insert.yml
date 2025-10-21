@@ -1,0 +1,63 @@
+- name: Start ClickHouse VM
+  hosts: clickhousedb
+  gather_facts: false
+
+  roles:
+    - role: common
+      create: false 
+    - role: clickhousedb
+      create: false
+
+  tasks:
+    - name: Wait for ClickHouse to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 2
+        timeout: 60
+        state: started
+
+    - name: Clear table before import
+      ansible.builtin.shell: |
+        clickhouse-client -q "TRUNCATE TABLE {{ db_table }}"
+      args:
+        executable: /bin/bash
+      register: truncate_result
+      changed_when: true
+
+    - name: Copy data
+      ansible.builtin.copy:
+        src: "{{ ansible_role_dir }}/{{ inventory_hostname }}/files/{{ data_gz }}"
+        dest: "{{ import_dir }}/{{ data_gz }}"
+        owner: clickhouse
+        group: clickhouse
+        mode: "0644"
+
+    - name: Set start datetime fact
+      ansible.builtin.set_fact:
+        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Import data
+      ansible.builtin.shell: |
+        /usr/bin/time -f "DURATION_SECONDS=%e" \
+        sudo clickhouse-client \
+          -q "INSERT INTO {{ db_table }} FORMAT CSVWithNames COMPRESSION 'gzip'" \
+          < {{ import_dir }}/{{ data_gz }}
+      args:
+        executable: /bin/bash
+      register: query_execution
+      changed_when: true
+
+    - name: Set end datetime fact
+      ansible.builtin.set_fact:
+        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Remove data file
+      ansible.builtin.file:
+        path: "{{ import_dir }}/{{ data_file }}"
+        state: absent
+
+  post_tasks:
+  - name: Post Processing
+    ansible.builtin.include_role:
+      name: post_processing

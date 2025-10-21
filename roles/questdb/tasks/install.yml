@@ -25,30 +25,11 @@
     state: absent
 
 - name: Create systemd service for QuestDB
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: questdb.service.j2
     dest: /etc/systemd/system/questdb.service
-    content: |
-      [Unit]
-      Description=QuestDB Service
-      After=network.target
-
-      [Service]
-      Type=forking
-      ExecStart=/root/questdb/bin/questdb.sh start
-      ExecStop=/root/questdb/bin/questdb.sh stop
-      User=root
-      Group=root
-      Restart=on-failure
-
-      [Install]
-      WantedBy=multi-user.target
+    mode: "0600"
   notify: Reload systemd
-
-- name: Enable and start QuestDB service
-  ansible.builtin.systemd:
-    name: questdb
-    enabled: yes
-    state: started
 
 - name: Enable and start QuestDB service
   ansible.builtin.systemd:

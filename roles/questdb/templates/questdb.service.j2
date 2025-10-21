@@ -1,0 +1,14 @@
+[Unit]
+Description=QuestDB Service
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/root/questdb/bin/questdb.sh start
+ExecStop=/root/questdb/bin/questdb.sh stop
+User=root
+Group=root
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

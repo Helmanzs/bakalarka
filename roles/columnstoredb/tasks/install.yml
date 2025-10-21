@@ -1,39 +1,35 @@
 ---
 - name: Configure sysctl parameters
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: sysctl.conf.j2
     dest: /etc/sysctl.d/90-mariadb-columnstore.conf
-    content: |
-      # BEGIN ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
-      {% for item in vm_sysctl_params %}
-      {{ item.name }} = {{ item.value }}
-      {% endfor %}
-      # END ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
-
-- name: Apply sysctl settings
-  ansible.builtin.sysctl:
-    name: "{{ item.name }}"
-    value: "{{ item.value }}"
-    state: present
-    reload: yes
-    sysctl_set: yes
-  loop: "{{ vm_sysctl_params }}"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Apply sysctl settings
 
 - name: Disable AppArmor
   ansible.builtin.systemd:
     name: apparmor
     state: stopped
-    enabled: no
+    enabled: false
 
-- name: Configure locale
-  ansible.builtin.command:
-    cmd: localedef -i en_US -f UTF-8 en_US.UTF-8
-  changed_when: true
+- name: Configure locale (en_US.UTF-8)
+  ansible.builtin.command: >
+    localedef -i en_US -f UTF-8 en_US.UTF-8
+  args:
+    creates: /usr/lib/locale/en_US.utf8
 
-- name: Reboot VM to apply changes
+- name: Reboot VM to apply configuration changes
   ansible.builtin.reboot:
     msg: "Rebooting after system configuration"
     connect_timeout: 30
     reboot_timeout: 300
+    test_command: whoami
+
+- name: Ensure dpkg is configured
+  ansible.builtin.apt:
+    upgrade: dist
 
 - name: Add MariaDB APT key
   ansible.builtin.apt_key:
@@ -41,14 +37,24 @@
     state: present
     validate_certs: true
 
+- name: Gather distribution facts
+  ansible.builtin.setup:
+    gather_subset:
+      - distribution
+
 - name: Add MariaDB APT repository
   ansible.builtin.apt_repository:
     repo: >
       deb [arch=amd64]
       http://mirror.mariadb.org/repo/{{ db_version }}/ubuntu
-      {{ ansible_distribution_release | lower }} main
+      {{ ansible_facts['distribution_release'] | lower }} main
     state: present
     filename: mariadb
+    update_cache: true
+  register: repo_result
+  retries: 5
+  delay: 10
+  until: repo_result is succeeded
 
 - name: Install MariaDB with ColumnStore
   ansible.builtin.apt:
@@ -57,31 +63,41 @@
       - mariadb-backup
       - mariadb-client
       - mariadb-plugin-columnstore
-    state: latest
+    state: present
+    update_cache: true
+    install_recommends: false
+    lock_timeout: 300
+  retries: 5
+  register: result
+  delay: 10
+  until: result is succeeded
 
 - name: Configure MariaDB basic settings
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: mariadb-columnstore.cnf.j2
     dest: /etc/mysql/mariadb.conf.d/90-columnstore.cnf
-    content: |
-      # BEGIN ANSIBLE MANAGED BLOCK - COLUMNSTORE PARAMETERS
-      [mariadb]
-      log_error = mariadbd.err
-      character_set_server = utf8
-      collation_server = utf8_general_ci
-      # END ANSIBLE MANAGED BLOCK - COLUMNSTORE PARAMETERS
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart services
 
-- name: Set CrossEngineSupport configuration
-  ansible.builtin.command:
-    cmd: "mcsSetConfig {{ item.key }} {{ item.value }}"
-  loop: "{{ db_cross_engine_config }}"
+- name: Configure CrossEngineSupport settings
+  ansible.builtin.command: >
+    mcsSetConfig CrossEngineSupport {{ item.key }} {{ item.value }}
+  loop:
+    - { key: "Host",     value: "{{ cross_engine_host }}" }
+    - { key: "Port",     value: "{{ cross_engine_port }}" }
+    - { key: "User",     value: "{{ cross_engine_user }}" }
+    - { key: "Password", value: "{{ cross_engine_password }}" }
+  changed_when: false
 
-- name: Start and enable MariaDB
+- name: Ensure MariaDB is running
   ansible.builtin.service:
     name: mariadb
     state: started
     enabled: true
 
-- name: Start and enable ColumnStore service
+- name: Ensure ColumnStore service is running
   ansible.builtin.service:
     name: mariadb-columnstore
     state: started

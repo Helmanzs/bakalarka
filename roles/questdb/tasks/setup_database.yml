@@ -5,9 +5,9 @@
     login_port: "{{ db_port }}"
     login_user: "{{ db_user }}"
     login_password: "{{ db_password }}"
-    login_db: "{{ login_db }}"
+    login_db: "{{ db_database }}"
     query: >
-      CREATE TABLE IF NOT EXISTS {{ collection }} (
+      CREATE TABLE IF NOT EXISTS {{ db_table }} (
         orig_id          INT,
         orig_time        TIMESTAMP,
         orig_topic       STRING,

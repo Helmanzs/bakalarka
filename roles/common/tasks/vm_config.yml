@@ -1,11 +1,14 @@
 ---
-- name: Create tmp directory
-  ansible.builtin.file:
-    path: "{{ ansible_remote_tmp }}"
-    state: directory
-    mode: "1777"
+# - name: Create tmp directory
+#   ansible.builtin.file:
+#     path: "{{ ansible_remote_tmp }}"
+#     state: directory
+#     mode: "1777"
 
 - name: Install packages
   ansible.builtin.apt:
     name: "{{ vm_packages }}"
     cache_valid_time: "{{ apt_cache_valid_time_base }}"
+    state: present
+  become: true
+  when: vm_packages is defined and vm_packages | length > 0

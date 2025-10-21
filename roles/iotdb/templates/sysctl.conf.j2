@@ -1,0 +1,4 @@
+# BEGIN ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS
+vm.swappiness = {{ sysctl_vm_swappiness }}
+net.core.somaxconn = {{ sysctl_net_core_somaxconn }}
+# END ANSIBLE MANAGED BLOCK - SYSCTL PARAMETERS

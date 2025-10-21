@@ -1,2 +1,19 @@
 ---
-# vars file for mariadb
+# VM VARS
+vm_name: mariadb
+vm_packages: 
+  - mysql-server
+  - python3-pymysql
+
+vm_disk_size: 8GB
+vm_profiles: "{{ lxd_profiles_base }}"
+
+# FILE VARS
+data_file_name: "raltra"
+data_file: "raltra.csv"
+data_tar: "{{ data_file }}.tar.gz"
+script_file: "send_data.sh"
+
+# DB VARS
+db_database: raltra
+db_table: car_telemetry

@@ -60,6 +60,7 @@ desktop.ini
 
 *.gz
 *.txt
+!progress.txt
 *.csv
 ./schemas
 */data/

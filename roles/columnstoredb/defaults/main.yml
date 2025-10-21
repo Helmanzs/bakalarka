@@ -1,3 +1,29 @@
 ---
-import_dir: "/tmp"
-socket: "/var/run/mysqld/mysqld.sock"
+import_dir: /tmp
+socket: /var/run/mysqld/mysqld.sock
+
+sysctl_vm_swappiness: 1
+sysctl_net_core_rmem_max: 16777216
+sysctl_net_core_wmem_max: 16777216
+sysctl_net_ipv4_tcp_rmem: "4096 87380 16777216"
+sysctl_net_ipv4_tcp_wmem: "4096 65536 16777216"
+sysctl_net_ipv4_tcp_no_metrics_save: 1
+sysctl_net_core_netdev_max_backlog: 2500
+
+db_user: cross_engine
+db_password: cross_engine
+db_privelages: "*.*:SELECT"
+
+db_user_allowed_hosts:
+  - 127.0.0.1
+  - localhost
+
+database: raltra
+table: car_telemetry
+
+db_version: 11.8
+
+cross_engine_user: "{{ db_user }}"
+cross_engine_password: "{{ db_password }}"
+cross_engine_host: 127.0.0.1
+cross_engine_port: 3306

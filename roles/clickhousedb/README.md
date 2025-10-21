@@ -1,38 +1,27 @@
-Role Name
-=========
+# ClickHouseDB Role
 
-A brief description of the role goes here.
+[![Ansible](https://img.shields.io/badge/Ansible-2.16+-blue.svg)](https://docs.ansible.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-Ubuntu%2024.04-orange.svg)](https://ubuntu.com/)
+[![Galaxy](https://img.shields.io/badge/Galaxy-helmanz.clickhousedb-lightgrey.svg)](https://galaxy.ansible.com/helmanz/clickhousedb)
 
-Requirements
-------------
+## Description
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+This Ansible role installs and configures **ClickHouseDB** inside **LXD-based virtual machines**.  
+It is designed for **Ubuntu 24.04** LXD instances deployed using the **Simplestreams image server** and includes setup for benchmarking, data import, and query testing.
 
-Role Variables
---------------
+---
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+## Requirements
 
-Dependencies
-------------
+- **Ansible**: 2.16 or higher  
+- **Target system**: LXD virtual machine (Ubuntu 24.04)  
+- **System resources**: Minimum 4 GB RAM recommended  
+- **Python 3.x** installed inside the container  
+- **Sudo privileges** available on the target VM  
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+---
 
-Example Playbook
-----------------
+## Dependencies
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
-
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
-
-License
--------
-
-BSD
-
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+This role depends on a base `common` role that prepares the LXD VM environment.

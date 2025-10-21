@@ -1,0 +1,12 @@
+[Unit]
+Description=ConfigNode Service
+After=network.target
+
+[Service]
+Type=forking
+ExecStart=/iotdb/sbin/start-confignode.sh -d
+ExecStop=/iotdb/sbin/stop-confignode.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

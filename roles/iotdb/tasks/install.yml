@@ -1,7 +1,7 @@
 ---
 - name: Get ram
   ansible.builtin.set_fact:
-    total_ram: "{{ hostvars['localhost'].ram_limit | regex_replace('[^0-9]', '') | int }}"
+    total_ram: "{{ ram_limit | regex_replace('[^0-9]', '') | int }}"
 
 - name: Calculate heap size
   ansible.builtin.set_fact:
@@ -75,39 +75,15 @@
       dn_internal_address={{ iotdb_dn_internal_address }}
 
 - name: Create systemd service for ConfigNode
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: confignode.service.j2
     dest: /etc/systemd/system/confignode.service
-    content: |
-      [Unit]
-      Description=ConfigNode Service
-      After=network.target
-
-      [Service]
-      Type=forking
-      ExecStart=/iotdb/sbin/start-confignode.sh -d
-      ExecStop=/iotdb/sbin/stop-confignode.sh
-      Restart=on-failure
-
-      [Install]
-      WantedBy=multi-user.target
     mode: "0600"
 
 - name: Create systemd service for DataNode
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: datanode.service.j2
     dest: /etc/systemd/system/datanode.service
-    content: |
-      [Unit]
-      Description=DataNode Service
-      After=network.target
-
-      [Service]
-      Type=forking
-      ExecStart=/iotdb/sbin/start-datanode.sh -d
-      ExecStop=/iotdb/sbin/stop-datanode.sh
-      Restart=on-failure
-
-      [Install]
-      WantedBy=multi-user.target
     mode: "0600"
 
 - name: Reload systemd daemon

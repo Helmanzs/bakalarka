@@ -1,18 +1,14 @@
 ---
 - name: Create TimescaleDB extension
-  become: true
-  become_user: "{{ db_user }}"
   community.postgresql.postgresql_ext:
     name: timescaledb
-    login_db: "{{ login_db }}"
+    login_db: "{{ db_database }}"
 
 - name: Create table
-  become: true
-  become_user: "{{ db_user }}"
   community.postgresql.postgresql_query:
-    login_db: "{{ login_db }}"
+    login_db: "{{ db_database }}"
     query: |
-      CREATE TABLE {{ collection }} (
+      CREATE TABLE {{ db_table }} (
         orig_id INTEGER,
         orig_time TIMESTAMPTZ,
         orig_topic TEXT,
@@ -71,13 +67,6 @@
       );
 
 - name: Convert table to hypertable
-  become: true
-  become_user: "{{ db_user }}"
-  ansible.builtin.command:
-    argv:
-      - psql
-      - -d
-      - "{{ login_db }}"
-      - -c
-      - "SELECT create_hypertable('{{ collection }}', 'gpstime');"
-  changed_when: true
+  community.postgresql.postgresql_query:
+    login_db: "{{ db_database }}"
+    query: "SELECT create_hypertable('{{ db_table }}', 'gpstime');"

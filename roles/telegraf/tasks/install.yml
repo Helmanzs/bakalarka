@@ -33,11 +33,22 @@
     filename: influxdata
     state: present
     update_cache: yes
+  register: repo_result
+  retries: 5
+  delay: 10
+  until: repo_result is succeeded
 
 - name: Install Telegraf
   ansible.builtin.apt:
     name: telegraf
     state: present
+    update_cache: true
+    install_recommends: false
+    lock_timeout: 300
+  retries: 5
+  delay: 10
+  until: result is succeeded
+  register: result
 
 - name: Read .env file content
   set_fact:
