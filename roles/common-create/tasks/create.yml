@@ -1,0 +1,50 @@
+---
+- block:
+  - name: Read VPN server public key
+    ansible.builtin.slurp:
+      src: "/home/{{ hostvars[inventory_hostname].ansible_user }}/.ssh/id_ed25519.pub"
+    register: vpn_pubkey
+    no_log: true
+
+  - name: Decode VPN public key
+    set_fact:
+      vpn_pubkey_decoded: "{{ vpn_pubkey.content | b64decode }}"
+    no_log: true
+  when: inventory_hostname != 'localhost'
+
+- name: Delete LXD instance(s) if exists
+  community.general.lxd_container:
+    name: "{{ vm_name }}"
+    state: absent
+    type: "{{ lxd_container_type | default('virtual-machine') }}"
+
+- name: Create LXD instance(s)
+  community.general.lxd_container:
+    name: "{{ vm_name }}"
+    ignore_volatile_options: true
+    type: "{{ lxd_container_type | default('virtual-machine') }}"
+    state: started
+    source:
+      type: image
+      mode: pull
+      server: "{{ lxd_image_src }}"
+      protocol: simplestreams
+      alias: "{{ lxd_image  }}"
+    profiles: "{{ lxd_profiles | default([]) }}"
+    config:
+      limits.memory: "{{ ram_limit }}"
+      limits.cpu: "{{ cpu_limit }}"
+      user.user-data: "{{ lookup('template', 'user-data.yml.j2') }}"
+    devices: "{{ lxd_container_devices }}"
+    wait_for_ipv4_addresses: "{{ lxd_wait_for_ipv4 | default(true) }}"
+    timeout: "{{ lxd_timeout | default(120) }}"
+  no_log: true
+
+- name: Wait for SSH to become available
+  ansible.builtin.wait_for_connection:
+    timeout: "{{ lxd_ssh_timeout | default(120) }}"
+  when: ansible_connection == 'ssh'
+
+- name: Gather facts for first time
+  ansible.builtin.setup:
+  when: ansible_connection == 'ssh'

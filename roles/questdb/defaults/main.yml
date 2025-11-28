@@ -1,2 +1,24 @@
 ---
-# defaults file for questdb
+
+vm_name: questdb
+vm_packages: 
+  - postgresql-client
+  - python3-psycopg2
+  - gnuplot
+
+vm_disk_size: 8GB
+vm_profiles: "{{ lxd_profiles_base }}"
+
+data_file: "raltra.csv"
+
+db_version: "8.3.3"
+db_tar_url: "https://github.com/questdb/questdb/releases/download/{{ db_version }}/questdb-{{ db_version }}-rt-linux-x86-64.tar.gz"
+db_port: 8812
+db_host: localhost
+db_user: admin
+db_password: quest
+db_import_retries: 300
+db_import_retry_inverval: 10
+db_database: qdb
+db_table: car_telemetry
+

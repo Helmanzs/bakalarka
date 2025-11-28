@@ -1,3 +1,16 @@
 ---
 import_dir: "/tmp"
 temp_dir: "/tmp/{{ data_file_name }}_temp"
+
+vm_name: influxdb
+vm_disk_size: 10GB
+vm_profiles: "{{ lxd_profiles_base }}"
+
+data_file: "raltra.lp"
+script_file: "send_data.sh"
+
+db_host: localhost
+db_port: 8181
+db_tar_url: "https://dl.influxdata.com/influxdb/releases/influxdb3-core-3.0.3_linux_amd64.tar.gz"
+db_database: raltra
+db_table: car_telemetry

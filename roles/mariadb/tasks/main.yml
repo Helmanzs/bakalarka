@@ -1,7 +1,9 @@
 ---
-- block:
-  - name: Setup database
-    ansible.builtin.include_tasks: "setup_database.yml"
+- name: Install MariaDB
+  ansible.builtin.include_tasks: "install.yml"
 
-  when: create | default(true)
+- name: Setup database
+  ansible.builtin.include_tasks: "setup_database.yml"
+
+
 

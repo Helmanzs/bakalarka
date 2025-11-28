@@ -14,6 +14,8 @@ inventory.ini
 secrets.yml
 group_vars/*.vault
 host_vars/*.vault
+inventory/local
+inventory/remote
 
 # Ignore roles downloaded from Galaxy
 # roles/*/

@@ -5,14 +5,14 @@ cpu_profile: "cpu1"
 keyring: "/usr/share/keyrings/clickhouse-keyring.gpg"
 import_dir: "/var/lib/clickhouse/user_files"
 
+vm_name: "clickhouse"
 vm_packages:
   - apt-transport-https
   - ca-certificates
-
 vm_disk_size: 6GB
 
 # FILE VARS
-#data_file: "raltra.csv"
+data_file: "raltra.csv"
 
 # DB VARS
 db_host: localhost

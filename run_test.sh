@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-HOSTS_FILE="vars/hosts"
+HOSTS_FILE="inventory/local"
 TESTS_FILE="vars/test_types.yml"
 
 # Extract databases and test types
@@ -11,6 +11,7 @@ TEST_TYPES=($(yq eval '.test_types | keys | .[]' "$TESTS_FILE"))
 ANSIBLE_VERBOSITY=""
 DATABASE=""
 TEST_TYPE=""
+REPEAT=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -26,9 +27,13 @@ while [[ $# -gt 0 ]]; do
       TEST_TYPE="$2"
       shift 2
       ;;
+    -r|-repeat)
+      REPEAT="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [-database <name>|*] [-test_type <name>|*]"
+      echo "Usage: $0 [-database <name>|*] [-test_type <name>|*] [-r <1..N>]"
       exit 1
       ;;
   esac
@@ -121,34 +126,41 @@ if [[ ! -d "$RESULTS_DIR" ]]; then
   mkdir -p "$RESULTS_DIR"
 fi
 
-for db in "${DATABASES_TO_RUN[@]}"; do
-  for test in "${TEST_TYPES_TO_RUN[@]}"; do
-    PLAYBOOK_PATH="$SCRIPT_DIR/tests/$db/$test.yml"
+for (( run=1; run<=REPEAT; run++ )); do
+  echo
+  echo "========== REPEAT RUN $run/$REPEAT =========="
 
-    if [[ ! -f "$PLAYBOOK_PATH" ]]; then
-      echo "Skipping: Playbook does not exist at $PLAYBOOK_PATH"
-      continue
-    fi
+  for db in "${DATABASES_TO_RUN[@]}"; do
+    for test in "${TEST_TYPES_TO_RUN[@]}"; do
 
-    echo
-    echo "========================================="
-    echo "Running playbook:"
-    echo "  Database: $db"
-    echo "  Test:     $test"
-    echo "========================================="
-    echo
+      PLAYBOOK_PATH="$SCRIPT_DIR/tests/$db/$test.yml"
 
-    echo "Launching in 3 seconds. Press 'X' to cancel."
-    for i in 3 2 1; do
-      echo "$i..."
-      read -t 1 -n 1 key
-      if [[ "$key" =~ [Xx] ]]; then
-        echo "Cancelled by user."
-        exit 0
+      if [[ ! -f "$PLAYBOOK_PATH" ]]; then
+        echo "Skipping: Playbook does not exist at $PLAYBOOK_PATH"
+        continue
       fi
-    done
 
-    ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" \
-      -e "database=$db test_type=$test results_dir=$RESULTS_DIR"
+      echo
+      echo "========================================="
+      echo "Running playbook:"
+      echo "  Database: $db"
+      echo "  Test:     $test"
+      echo "  Run:      $run / $REPEAT"
+      echo "========================================="
+      echo
+
+      echo "Launching in 3 seconds. Press 'X' to cancel."
+      for i in 3 2 1; do
+        echo "$i..."
+        read -t 1 -n 1 key
+        if [[ "$key" =~ [Xx] ]]; then
+          echo "Cancelled by user."
+          exit 0
+        fi
+      done
+
+      ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" \
+        -e "database=$db test_type=$test results_dir=$RESULTS_DIR run=$run"
+    done
   done
 done

@@ -11,10 +11,12 @@
   changed_when:
     - token_result is succeeded
     - token_result.stdout | length > 0
+  #no_log: true
 
 - name: Set influxdb_token fact
   ansible.builtin.set_fact:
     influxdb_token: "{{ token_result.stdout }}"
+  #no_log: true
 
 - name: Set INFLUXDB3_AUTH_TOKEN in .bashrc
   ansible.builtin.lineinfile:

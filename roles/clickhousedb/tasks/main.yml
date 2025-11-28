@@ -1,9 +1,6 @@
 ---
-- block:
-  - name: Install ClickHouseDB
-    ansible.builtin.include_tasks: "install.yml"
+- name: Install ClickHouseDB
+  ansible.builtin.include_tasks: "install.yml"
 
-  - name: Setup database
-    ansible.builtin.include_tasks: "setup_database.yml"
-
-  when: create | default(true)
+- name: Setup database
+  ansible.builtin.include_tasks: "setup_database.yml"

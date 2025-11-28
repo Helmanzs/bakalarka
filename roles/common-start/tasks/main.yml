@@ -1,0 +1,18 @@
+---
+- name: Get CPU and RAM profiles
+  ansible.builtin.include_tasks: "include_profiles.yml"
+
+- block:
+  - name: Start LXD Instance(s)
+    community.general.lxd_container:
+      name: "{{ vm_name }}"
+      state: started
+      type: "{{ lxd_container_type | default('virtual-machine') }}"
+
+  - name: Gather facts for first time
+    ansible.builtin.setup:
+
+  rescue:
+    - name: Failed to start VM, creating VM instead
+      ansible.builtin.include_role: 
+        name: common-create

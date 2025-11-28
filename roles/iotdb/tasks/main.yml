@@ -1,9 +1,6 @@
 ---
-- block:
-  - name: Configure VM
-    ansible.builtin.include_tasks: "configure_vm.yml"
-      
-  - name: Install and Configure IoTDB
-    ansible.builtin.include_tasks: "install.yml"
-
-  when: create | default(true)
+- name: Configure VM
+  ansible.builtin.include_tasks: "configure_vm.yml"
+    
+- name: Install and Configure IoTDB
+  ansible.builtin.include_tasks: "install.yml"

@@ -1,0 +1,37 @@
+---
+- name: Get VM IP Address
+  block:
+    - name: Increment attempts counter
+      ansible.builtin.set_fact:
+        attempt_number: "{{ attempt_number | d(0) | int + 1 }}"
+        
+    - name: Get VM state
+      ansible.builtin.command:
+        cmd: "lxc info {{ vm_name }}"
+      register: vm_state
+      failed_when: false
+      changed_when: false
+      delegate_to: "{{ deploy_target | default('localhost') }}"
+
+    - name: Extract IP address from container
+      ansible.builtin.set_fact:
+        vm_ip: "{{ (vm_state.stdout | regex_findall('inet:\\s*(\\d+\\.\\d+\\.\\d+\\.\\d+)')) | first }}"
+      delegate_to: "{{ deploy_target | default('localhost') }}"
+
+  rescue:
+    - name: "Fail if we reached the max of {{ max_attempts | d(3) }} attempts"
+      ansible.builtin.fail:
+        msg: Maximum number of attempts reached
+      when: attempt_number | int == max_attempts | int | d(3)
+
+    - name: Show number of attempts
+      ansible.builtin.debug:
+        msg: "group of tasks failed on attempt {{ attempt_number }}. Retrying"
+
+    - name: Add delay if configured
+      ansible.builtin.wait_for:
+        timeout: "{{ retry_delay | int | d(omit) }}"
+      when: retry_delay is defined
+
+    - name: Include ourselves to retry.
+      ansible.builtin.include_tasks: get_ip.yml

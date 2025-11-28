@@ -1,4 +1,11 @@
 ---
+- name: Wait for MongoDB to start listening
+  ansible.builtin.wait_for:
+    port: 27017
+    host: "127.0.0.1"
+    delay: 2
+    timeout: 60
+    
 - name: Create database
   community.mongodb.mongodb_shell:
     login_host: "{{ db_host }}"

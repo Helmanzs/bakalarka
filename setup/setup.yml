@@ -1,0 +1,43 @@
+---
+
+- name: Setup LXD Instance(s)
+  hosts: servers
+  vars:
+    target_list: "{{ [target] if target is defined else groups['databases'] }}"
+  tasks:
+    - name: Check if target '{{ target }}' is valid
+      ansible.builtin.fail:
+        msg: "The target '{{ target }}' is not defined in the [databases] inventory group."
+      when: target not in groups['databases']
+
+    - name: Load database specific definitions
+      ansible.builtin.include_vars:
+        file: "{{ ansible_role_dir }}/{{ target }}/defaults/main.yml"
+
+    - name: Create LXD instance for '{{ target }}'
+      ansible.builtin.include_role:
+        name: common-create
+      vars:
+        vm_name: "{{ target }}"
+        vm_ip: "{{ hostvars[target]['ansible_host'] }}"
+    
+    - name: Wait for SSH to be up
+      wait_for:
+        host: "{{ hostvars[target]['ansible_host'] }}"
+        port: 22
+        state: started
+        delay: 2
+        timeout: 30
+
+- name: Configure database '{{ target }}'
+  hosts: "{{ target }}"
+  gather_facts: true
+  pre_tasks:
+    - name: Wait for cloud-init to complete
+      ansible.builtin.wait_for:
+        path: /var/lib/cloud/instance/boot-finished
+        timeout: 300
+        state: present
+
+  roles:
+    - role: "{{ target }}"

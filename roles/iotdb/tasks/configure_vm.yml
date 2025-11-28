@@ -1,4 +1,12 @@
 ---
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ vm_packages }}"
+    cache_valid_time: "{{ apt_cache_valid_time_base }}"
+    state: present
+    update_cache: true
+  when: vm_packages is defined and vm_packages | length > 0
+
 - name: Install Apache IoTDB
   ansible.builtin.pip:
     name: apache-iotdb
@@ -28,18 +36,21 @@
     - name: Disable swap
       ansible.builtin.command: swapoff -a
       register: swapoff_result
-      failed_when:
-        - swapoff_result.rc != 0
-        - "'swapoff: not found' not in swapoff_result.stderr"
       changed_when: true
+      failed_when: 
+        - swapoff_result.rc != 0
+        - "'not found' not in swapoff_result.stderr"
+        - "'Operation not permitted' not in swapoff_result.stderr"
 
     - name: Enable swap
       ansible.builtin.command: swapon -a
       register: swapon_result
-      failed_when:
-        - swapon_result.rc != 0
-        - "'swapon: not found' not in swapon_result.stderr"
       changed_when: true
+      failed_when: 
+        - swapoff_result.rc != 0
+        - "'not found' not in swapoff_result.stderr"
+        - "'Operation not permitted' not in swapoff_result.stderr"
+  ignore_errors: true
 
 - name: Configure file limits
   ansible.builtin.blockinfile:

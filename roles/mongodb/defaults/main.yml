@@ -1,2 +1,15 @@
 ---
-# defaults file for mongodb
+vm_name: mongodb
+vm_packages: 
+  - python3-pymongo
+
+vm_disk_size: 8GB
+vm_profiles: "{{ lxd_profiles_base }}"
+
+data_file: "raltra.json"
+
+gpg_key_url: "https://www.mongodb.org/static/pgp/server-8.0.asc"
+db_host: localhost
+db_port: 27017
+db_database: raltra
+db_table: car_telemetry

@@ -1,4 +1,12 @@
 ---
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ vm_packages }}"
+    cache_valid_time: "{{ apt_cache_valid_time_base }}"
+    state: present
+    update_cache: true
+  when: vm_packages is defined and vm_packages | length > 0
+
 - name: Download TimescaleDB GPG key
   ansible.builtin.apt_key:
     url: "{{ gpg_key_url }}"
@@ -62,22 +70,6 @@
     regexp: '^local\s+all\s+postgres\s+peer'
     replace: 'local   all             postgres                                trust'
     backup: true
-
-# - name: Ensure pg_ident.conf includes user mapping
-#   ansible.builtin.lineinfile:
-#     path: /etc/postgresql/17/main/pg_ident.conf
-#     line: "user1 {{ lookup('ansible.builtin.pipe', 'whoami') }} postgres"
-#     create: yes
-#     insertafter: EOF
-#     state: present
-
-# - name: Ensure postgres peer authentication is configured
-#   ansible.builtin.blockinfile:
-#     path: /etc/postgresql/17/main/pg_hba.conf
-#     marker: "# {mark} ANSIBLE MANAGED BLOCK: postgres peer access"
-#     block: |
-#       # TYPE  DATABASE        USER            ADDRESS                 METHOD
-#       local   all             postgres                                peer
 
 - name: Configure PostgreSQL authentication
   ansible.builtin.replace:

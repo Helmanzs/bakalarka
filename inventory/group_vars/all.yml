@@ -1,0 +1,19 @@
+---
+ansible_user: root
+
+apt_cache_valid_time_base: 3600
+
+project_root: "{{ lookup('env', 'PROJECT_ROOT') | default(lookup('env', 'HOME') + '/playbook', true) }}"
+
+ansible_env_file: "{{ project_root }}/.env"
+ansible_vars_dir: "{{ project_root }}/inventory"
+ansible_resources_dir: "{{ ansible_vars_dir }}/resource_vars"
+ansible_role_dir: "{{ project_root }}/roles/"
+
+default_ram_profile: "ram2"
+default_cpu_profile: "cpu1"
+
+data_file_name: "{{ data_file.split('.')[0] | default('data') }}"
+data_tar: "{{ data_file | default('data') }}.tar.gz"
+data_gz: "{{ data_file | default('data')  }}.gz"
+data_zip: "{{ data_file  | default('data') }}.zip"

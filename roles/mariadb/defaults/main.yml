@@ -1,3 +1,17 @@
 ---
 import_dir: "/var/lib/mysql-files"
 socket: "/var/run/mysqld/mysqld.sock"
+
+vm_name: mariadb
+vm_packages: 
+  - mysql-server
+  - python3-pymysql
+
+vm_disk_size: 8GB
+vm_profiles: "{{ lxd_profiles_base }}"
+
+data_file: "raltra.csv"
+script_file: "send_data.sh"
+
+db_database: raltra
+db_table: car_telemetry

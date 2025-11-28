@@ -1,5 +1,0 @@
----
-db_host: localhost
-db_port: 9000
-db_table: car_telemetry
-data_file: raltra.csv

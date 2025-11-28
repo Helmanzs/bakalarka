@@ -1,7 +1,7 @@
 ---
 - name: Get ram
   ansible.builtin.set_fact:
-    total_ram: "{{ ram_limit | regex_replace('[^0-9]', '') | int }}"
+    total_ram: "{{ ram_limit | regex_replace('[^0-9]', '') | int | default(2) }}"
 
 - name: Calculate heap size
   ansible.builtin.set_fact:
@@ -34,9 +34,20 @@
     - { path: "/data/iotdb" }
     - { path: "/iotdb/" }
 
-- name: Download IoTDB
+- name: Download IoTDB Archive
+  ansible.builtin.get_url:
+    url: "{{ db_zip_url }}"
+    dest: "/tmp/iotdb-download.zip"
+    timeout: 600 
+    mode: '0644'
+  register: download_result
+  until: download_result is succeeded
+  retries: 3
+  delay: 10
+
+- name: Extract IoTDB
   ansible.builtin.unarchive:
-    src: "{{ db_zip_url }}"
+    src: "/tmp/iotdb-download.zip"
     dest: /tmp/
     remote_src: true
     mode: "0755"

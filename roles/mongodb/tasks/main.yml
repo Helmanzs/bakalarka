@@ -1,9 +1,7 @@
 ---
-- block: 
-  - name: Install and configure MongoDB
-    ansible.builtin.include_tasks: "install.yml"
+- name: Install and configure MongoDB
+  ansible.builtin.include_tasks: "install.yml"
 
-  - name: Setup database
-    ansible.builtin.include_tasks: "setup_database.yml"
+- name: Setup database
+  ansible.builtin.include_tasks: "setup_database.yml"
 
-  when: create | default(true)

@@ -1,4 +1,27 @@
 ---
+- name: Install software-properties-common
+  ansible.builtin.apt:
+    name: software-properties-common
+    state: present
+    update_cache: true
+  register: result
+  until: result is succeeded
+  retries: 10
+  delay: 5
+
+- name: Enable Universe repository
+  ansible.builtin.command: add-apt-repository -y universe
+  register: universe_result
+  changed_when: "'component is already enabled' not in universe_result.stdout"
+
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ vm_packages }}"
+    cache_valid_time: "{{ apt_cache_valid_time_base }}"
+    state: present
+    update_cache: true
+  when: vm_packages is defined and vm_packages | length > 0
+
 - name: Configure sysctl parameters
   ansible.builtin.template:
     src: sysctl.conf.j2
@@ -13,6 +36,7 @@
     name: apparmor
     state: stopped
     enabled: false
+  ignore_errors: true
 
 - name: Configure locale (en_US.UTF-8)
   ansible.builtin.command: >
@@ -20,12 +44,9 @@
   args:
     creates: /usr/lib/locale/en_US.utf8
 
-- name: Reboot VM to apply configuration changes
-  ansible.builtin.reboot:
-    msg: "Rebooting after system configuration"
-    connect_timeout: 30
-    reboot_timeout: 300
-    test_command: whoami
+- name: Apply sysctl settings immediately
+  ansible.builtin.command: sysctl --system
+  changed_when: false
 
 - name: Ensure dpkg is configured
   ansible.builtin.apt:

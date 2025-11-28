@@ -1,0 +1,10 @@
+---
+- name: Include ram profile
+  ansible.builtin.include_vars:
+    file: "{{ ansible_resources_dir }}/ram/{{ ram_profile | default(default_ram_profile) }}.yml"
+  delegate_to: "{{ deploy_target | default('localhost') }}"
+
+- name: Include cpu profile
+  ansible.builtin.include_vars:
+    file: "{{ ansible_resources_dir }}/cpu/{{ cpu_profile | default(default_cpu_profile) }}.yml"
+  delegate_to: "{{ deploy_target | default('localhost') }}"

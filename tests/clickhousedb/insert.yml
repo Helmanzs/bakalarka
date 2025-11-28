@@ -1,10 +1,15 @@
-- name: Start ClickHouse VM
-  hosts: clickhousedb
-  gather_facts: false
-
+---
+- name: Start ClickHouse LXD Instance
+  hosts: dcuk
   roles:
     - role: common
-      create: false 
+      create: false
+      vars: 
+        vm_name: clickhousedb
+
+- name: Do Test
+  hosts: clickhousedb
+  roles:
     - role: clickhousedb
       create: false
 
@@ -17,14 +22,6 @@
         timeout: 60
         state: started
 
-    - name: Clear table before import
-      ansible.builtin.shell: |
-        clickhouse-client -q "TRUNCATE TABLE {{ db_table }}"
-      args:
-        executable: /bin/bash
-      register: truncate_result
-      changed_when: true
-
     - name: Copy data
       ansible.builtin.copy:
         src: "{{ ansible_role_dir }}/{{ inventory_hostname }}/files/{{ data_gz }}"
@@ -32,6 +29,14 @@
         owner: clickhouse
         group: clickhouse
         mode: "0644"
+        
+    - name: Clear table before import
+      ansible.builtin.shell: |
+        clickhouse-client -q "TRUNCATE TABLE {{ db_table }}"
+      args:
+        executable: /bin/bash
+      register: truncate_result
+      changed_when: true
 
     - name: Set start datetime fact
       ansible.builtin.set_fact:

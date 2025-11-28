@@ -1,0 +1,10 @@
+---
+- name: Get CPU and RAM profiles
+  ansible.builtin.include_tasks: "include_profiles.yml"
+
+- name: Create LXD instance(s)
+  ansible.builtin.include_tasks: "create.yml"
+
+
+
+

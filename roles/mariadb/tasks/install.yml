@@ -1,0 +1,11 @@
+---
+- name: Install packages
+  ansible.builtin.apt:
+    name: "{{ vm_packages }}"
+    cache_valid_time: "{{ apt_cache_valid_time_base }}"
+    state: present
+    update_cache: true
+  when: vm_packages is defined and vm_packages | length > 0
+
+
+

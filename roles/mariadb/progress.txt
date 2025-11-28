@@ -195,10 +195,3 @@ SET
   
   -- Auto-increment ID should be omitted or set to NULL
   id = NULL;
-
-
-no-changed-when: Commands should not change things if nothing needs doing.
-init.yml:112 Task/Handler: Move data to mysql
-
-no-changed-when: Commands should not change things if nothing needs doing.
-init.yml:188 Task/Handler: Remove import file

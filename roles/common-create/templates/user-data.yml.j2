@@ -1,0 +1,16 @@
+#cloud-config
+package_update: true
+packages:
+{% for pkg in shared_packages %}
+  - {{ pkg }}
+{% endfor %}
+
+users:
+  - name: root
+    ssh_authorized_keys:
+      - {{ lookup('file', lxd_ssh_pubkey_file | default('~/.ssh/id_ed25519.pub')) }}
+{% if (inventory_hostname | default('localhost')) != 'localhost' %}
+      - {{ vpn_pubkey_decoded }}
+{% endif %}
+    shell: /bin/bash
+

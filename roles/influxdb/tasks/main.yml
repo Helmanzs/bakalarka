@@ -1,12 +1,10 @@
 ---
-- block: 
-  - name: Configure VM
-    include_tasks: "configure_vm.yml"
-      
-  - name: Install and configure InfluxDB
-    include_tasks: "install.yml"
+- name: Configure VM
+  include_tasks: "configure_vm.yml"
     
-  - name: Generate InfluxDB token
-    include_tasks: "generate_token.yml"
+- name: Install and configure InfluxDB
+  include_tasks: "install.yml"
+  
+- name: Generate InfluxDB token
+  include_tasks: "generate_token.yml"
 
-  when: create | default(true)
