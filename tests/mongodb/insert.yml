@@ -1,49 +1,32 @@
-- name: Start MongoDB VM
-  hosts: mongodb
-  gather_facts: false
-  vars:
-    vehicle_id: "186"
-    target_timestamp: "2024-12-02T17:52:54"
 
-  roles:
-    - role: common
-      create: false
-    - role: mongodb
-      create: false
+- name: Push and extract data
+  ansible.builtin.unarchive:
+    src: "{{ ansible_role_dir }}/{{ vm_name }}/files/{{ data_tar }}"
+    dest: "/tmp/"
+    mode: "0777"
 
-  tasks:
-    - name: Push and extract data
-      ansible.builtin.unarchive:
-        src: "{{ ansible_role_dir }}/{{ vm_name }}/files/{{ data_tar }}"
-        dest: "/tmp/"
-        mode: "0777"
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Set start datetime fact
-      ansible.builtin.set_fact:
-        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Import data
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    mongoimport \
+    --uri=mongodb://{{ db_host }}:{{ db_port }}/{{ db_database }} \
+    --collection={{ db_table }} \
+    --file=/tmp/{{ data_file }}
+  args:
+    executable: /bin/bash
+  register: query_execution
+  changed_when: true
 
-    - name: Import data
-      ansible.builtin.shell: |
-        /usr/bin/time -f "DURATION_SECONDS=%e" \
-        mongoimport \
-        --uri=mongodb://{{ db_host }}:{{ db_port }}/{{ db_database }} \
-        --collection={{ db_table }} \
-        --file=/tmp/{{ data_file }}
-      args:
-        executable: /bin/bash
-      register: query_execution
-      changed_when: true
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Set end datetime fact
-      ansible.builtin.set_fact:
-        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Remove data file
+  ansible.builtin.file:
+    path: /tmp/{{ data_file }}
+    state: absent
 
-    - name: Remove data file
-      ansible.builtin.file:
-        path: /tmp/{{ data_file }}
-        state: absent
-
-  post_tasks:
-  - name: Post Processing
-    ansible.builtin.include_role:
-      name: post_processing

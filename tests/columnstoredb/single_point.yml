@@ -1,55 +1,34 @@
-- name: Start ColumnStoreDB VM
-  hosts: columnstoredb
-  gather_facts: false
-  vars:
+- name: Set query facts
+  ansible.builtin.set_fact:
     vehicle_id: "186"
     target_timestamp: "2024-12-02 17:52:54"
 
-  roles:
-    - role: common
-      create: false
-    - role: columnstoredb
-      create: false
- 
-  tasks:
-    - name: Wait for ColumnStoreDB to be available
-      ansible.builtin.wait_for:
-        host: "{{ db_host }}"
-        port: "{{ db_port }}"
-        delay: 2
-        timeout: 60
-        state: started
-      
-    - name: Set start datetime fact
-      ansible.builtin.set_fact:
-        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Perform indexed lookup
-      ansible.builtin.shell: |
-        /usr/bin/time -f "DURATION_SECONDS=%e" \
-        mariadb -h {{ db_host }} -P {{ db_port }} -u {{ db_user }} -p{{ db_password }} {{ db_database }} \
-          -e "SELECT * FROM {{ db_table }} \
-          WHERE VehicleID='{{ vehicle_id }}' \
-          AND GpsTime='{{ target_timestamp }}';"
-      register: query_execution
-      changed_when: false
-    
-    - name: Set end datetime fact
-      ansible.builtin.set_fact:
-        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Perform indexed lookup
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    mariadb -h {{ db_host }} -P {{ db_port }} -u {{ db_user }} -p{{ db_password }} {{ db_database }} \
+      -e "SELECT * FROM {{ db_table }} \
+      WHERE VehicleID='{{ vehicle_id }}' \
+      AND GpsTime='{{ target_timestamp }}';"
+  register: query_execution
+  changed_when: false
 
-    - name: Capture rows returned by query
-      ansible.builtin.shell: |
-        mariadb -N -h {{ db_host }} -P {{ db_port }} -u {{ db_user }} -p{{ db_password }} {{ db_database }} \
-        -e "SELECT COUNT(*) FROM {{ db_table }} \
-        WHERE VehicleID='{{ vehicle_id }}' \
-        AND GpsTime='{{ target_timestamp }}';"
-      register: query_rows_returned
-      changed_when: false
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-  post_tasks:
-  - name: Post Processing
-    ansible.builtin.include_role:
-      name: post_processing
+- name: Capture rows returned by query
+  ansible.builtin.shell: |
+    mariadb -N -h {{ db_host }} -P {{ db_port }} -u {{ db_user }} -p{{ db_password }} {{ db_database }} \
+    -e "SELECT COUNT(*) FROM {{ db_table }} \
+    WHERE VehicleID='{{ vehicle_id }}' \
+    AND GpsTime='{{ target_timestamp }}';"
+  register: query_rows_returned
+  changed_when: false
+
 
 

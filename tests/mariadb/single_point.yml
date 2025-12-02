@@ -1,51 +1,37 @@
-- name: Start MariaDB VM
-  hosts: mariadb
-  gather_facts: false
-  vars:
+- name: Wait for MariaDB to start
+  ansible.builtin.wait_for:
+    path: "{{ socket }}"
+    state: present
+    timeout: 60
+
+- name: Set query facts
+  ansible.builtin.set_fact:
     vehicle_id: "186"
     target_timestamp: "2024-12-02T17:52:54"
 
-  roles:
-    - role: common
-      create: false
-    - role: mariadb
-      create: false
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-  tasks:
-    - name: Wait for MariaDB to start
-      ansible.builtin.wait_for:
-        path: "{{ socket }}"
-        state: present
-        timeout: 60
+- name: Perform indexed lookup
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    mysql {{ db_database }} -S {{ socket }} -e \
+    "SELECT VehicleID FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
+  register: query_execution
+  changed_when: false
 
-    - name: Set start datetime fact
-      ansible.builtin.set_fact:
-        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Perform indexed lookup
-      ansible.builtin.shell: |
-        /usr/bin/time -f "DURATION_SECONDS=%e" \
-        mysql {{ db_database }} -S {{ socket }} -e \
-        "SELECT VehicleID FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
-      register: query_execution
-      changed_when: false
-    
-    - name: Set end datetime fact
-      ansible.builtin.set_fact:
-        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
-    
-    - name: Get number of rows returned
-      ansible.builtin.shell: |
-        mysql {{ db_database }} -S {{ socket }} -e \
-        "SELECT count(VehicleID) FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
-      register: query_rows_returned
-      changed_when: false
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    mysql {{ db_database }} -S {{ socket }} -e \
+    "SELECT count(VehicleID) FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = '{{ target_timestamp }}';"
+  register: query_rows_returned
+  changed_when: false
 
-    - name: Get rows returned
-      ansible.builtin.set_fact:
-        rows_returned: "{{ (query_rows_returned.stdout | regex_search('(?im)(\\d+)', '\\1'))[0] | int }}"
-
-  post_tasks:
-  - name: Post Processing
-    ansible.builtin.include_role:
-      name: post_processing
+- name: Get rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ (query_rows_returned.stdout | regex_search('(?im)(\\d+)', '\\1'))[0] | int }}"

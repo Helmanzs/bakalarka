@@ -15,3 +15,5 @@ script_file: "send_data.sh"
 
 db_database: raltra
 db_table: car_telemetry
+db_host: localhost
+db_port: 3306

@@ -1,156 +1,132 @@
-- name: Start IoTDB VM
-  hosts: iotdb
-  gather_facts: false
+- name: Truncate all data in IoTDB
+  ansible.builtin.command: >
+    /iotdb/sbin/start-cli.sh
+    -h 127.0.0.1
+    -p {{ db_port }}
+    -u {{ db_user }}
+    -pw {{ db_password }}
+    -e "DELETE FROM root.**;"
+  register: truncate_result
+  changed_when: false
 
-  roles:
-    - role: common
-      create: false
-    - role: iotdb
-      create: false
+- name: Copy data
+  ansible.builtin.copy:
+    src: "{{ ansible_role_dir }}/{{ vm_name }}/files/{{ data_tar }}"
+    dest: "{{ import_dir }}/{{ data_tar }}"
+    mode: "0644"
+  become: true
 
-  tasks:
-    - name: Wait for IoTDB to be available
-      ansible.builtin.wait_for:
-        host: "{{ db_host }}"
-        port: "{{ db_port }}"
-        delay: 2
-        timeout: 60
-        state: started
+- name: Extract data
+  ansible.builtin.shell: |
+    tar --extract --use-compress-program=pigz \
+    --file="{{ import_dir }}/{{ data_tar }}" \
+    --directory="{{ import_dir }}"
+    rm -f "{{ import_dir }}/{{ data_tar }}"
+    chmod -R 0644 "{{ import_dir }}"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  become: true
 
-    - name: Truncate all data in IoTDB
-      ansible.builtin.command: >
-        /iotdb/sbin/start-cli.sh
-        -h 127.0.0.1
-        -p {{ db_port }}
-        -u {{ db_user }}
-        -pw {{ db_password }}
-        -e "DELETE FROM root.**;"
-      register: truncate_result
-      changed_when: false
+- name: Create required directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - "{{ temp_dir }}"
+    - /tmp/failed_rows
+  become: true
 
-    - name: Copy data
-      ansible.builtin.copy:
-        src: "{{ ansible_role_dir }}/{{ vm_name }}/files/{{ data_tar }}"
-        dest: "{{ import_dir }}/{{ data_tar }}"
-        mode: "0644"
-      become: true
+- name: Split CSV into chunks
+  ansible.builtin.shell: |
+    split -l 100000 --numeric-suffixes=1 --additional-suffix=.csv \
+      "{{ import_dir }}/{{ data_file }}" "{{ temp_dir }}/chunk_"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  no_log: true
+  become: true
 
-    - name: Extract data
-      ansible.builtin.shell: |
-        tar --extract --use-compress-program=pigz \
-        --file="{{ import_dir }}/{{ data_tar }}" \
-        --directory="{{ import_dir }}"
-        rm -f "{{ import_dir }}/{{ data_tar }}"
-        chmod -R 0644 "{{ import_dir }}"
-      args:
-        executable: /bin/bash
-      changed_when: true
-      become: true
+- name: Get chunk files
+  ansible.builtin.shell:
+    cmd: "ls {{ temp_dir }}/chunk_*.csv"
+  register: chunk_files
+  changed_when: false
+  no_log: true
+  become: true
 
-    - name: Create required directories
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: directory
-      loop:
-        - "{{ temp_dir }}"
-        - /tmp/failed_rows
-      become: true
+- name: Set header variable from first chunk file
+  ansible.builtin.slurp:
+    src: "{{ (chunk_files.stdout_lines | sort)[0] }}"
+  register: header_file
+  no_log: true
 
-    - name: Split CSV into chunks
-      ansible.builtin.shell: |
-        split -l 100000 --numeric-suffixes=1 --additional-suffix=.csv \
-          "{{ import_dir }}/{{ data_file }}" "{{ temp_dir }}/chunk_"
-      args:
-        executable: /bin/bash
-      changed_when: true
-      no_log: true
-      become: true
+- name: Decode header and get first line
+  ansible.builtin.set_fact:
+    header_line: "{{ (header_file.content | b64decode).split('\n')[0] }}"
 
-    - name: Get chunk files
-      ansible.builtin.shell:
-        cmd: "ls {{ temp_dir }}/chunk_*.csv"
-      register: chunk_files
-      changed_when: false
-      no_log: true
-      become: true
+- name: Add header to other chunk files
+  ansible.builtin.shell: |
+    echo "{{ header_line }}" | cat - {{ item }} > {{ item }}.tmp && mv {{ item }}.tmp {{ item }}
+  loop: "{{ (chunk_files.stdout_lines | sort)[1:] }}"
 
-    - name: Set header variable from first chunk file
-      ansible.builtin.slurp:
-        src: "{{ (chunk_files.stdout_lines | sort)[0] }}"
-      register: header_file
-      no_log: true
+- name: Create chunk batches for limited parallel imports
+  ansible.builtin.set_fact:
+    chunk_batches: "{{ chunk_files.stdout_lines | batch(parallel_imports) | list }}"
 
-    - name: Decode header and get first line
-      ansible.builtin.set_fact:
-        header_line: "{{ (header_file.content | b64decode).split('\n')[0] }}"
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Add header to other chunk files
-      ansible.builtin.shell: |
-        echo "{{ header_line }}" | cat - {{ item }} > {{ item }}.tmp && mv {{ item }}.tmp {{ item }}
-      loop: "{{ (chunk_files.stdout_lines | sort)[1:] }}"
+- name: Record start time
+  ansible.builtin.command:
+    cmd: date +%s.%N
+  register: start_time
+  changed_when: false
 
-    - name: Create chunk batches for limited parallel imports
-      ansible.builtin.set_fact:
-        chunk_batches: "{{ chunk_files.stdout_lines | batch(parallel_imports) | list }}"
+- name: Run imports in limited parallel batches
+  vars:
+    total_batches: "{{ chunk_batches | length }}"
+  ansible.builtin.shell: |
+    echo "=== Starting batch {{ loop_index }} of {{ total_batches }} ==="
+    for chunk in {{ item | join(' ') }}; do
+      /iotdb/tools/import-data.sh \
+        -ft csv \
+        -h {{ db_host }} \
+        -p {{ db_port }} \
+        -u {{ db_user }} \
+        -pw {{ db_password }} \
+        -s "$chunk" \
+        -fd /tmp/failed_rows/ \
+        -aligned true \
+        -tn {{ threads }} \
+        -tz +02:00 &
+    done
+    wait
+    echo "=== Finished batch {{ loop_index }} ==="
+  loop: "{{ chunk_batches }}"
+  loop_control:
+    label: "Batch {{ loop_index }} of {{ chunk_batches | length }}"
+    index_var: loop_index
+  args:
+    executable: /bin/bash
 
-    - name: Set start datetime fact
-      ansible.builtin.set_fact:
-        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Record end time
+  ansible.builtin.command:
+    cmd: date +%s.%N
+  register: end_time
+  changed_when: false
 
-    - name: Record start time
-      ansible.builtin.command:
-        cmd: date +%s.%N
-      register: start_time
-      changed_when: false
+- name: Format total duration
+  ansible.builtin.set_fact:
+    total_duration_output: >-
+      DURATION_SECONDS={{ '%.2f' | format((end_time.stdout | float) - (start_time.stdout | float)) }}
 
-    - name: Run imports in limited parallel batches
-      vars:
-        total_batches: "{{ chunk_batches | length }}"
-      ansible.builtin.shell: |
-        echo "=== Starting batch {{ loop_index }} of {{ total_batches }} ==="
-        for chunk in {{ item | join(' ') }}; do
-          /iotdb/tools/import-data.sh \
-            -ft csv \
-            -h {{ db_host }} \
-            -p {{ db_port }} \
-            -u {{ db_user }} \
-            -pw {{ db_password }} \
-            -s "$chunk" \
-            -fd /tmp/failed_rows/ \
-            -aligned true \
-            -tn {{ threads }} \
-            -tz +02:00 &
-        done
-        wait
-        echo "=== Finished batch {{ loop_index }} ==="
-      loop: "{{ chunk_batches }}"
-      loop_control:
-        label: "Batch {{ loop_index }} of {{ chunk_batches | length }}"
-        index_var: loop_index
-      args:
-        executable: /bin/bash
+- name: Register total duration
+  ansible.builtin.set_fact:
+    query_execution:
+      stderr_lines: ["{{ total_duration_output }}"]
 
-    - name: Record end time
-      ansible.builtin.command:
-        cmd: date +%s.%N
-      register: end_time
-      changed_when: false
-
-    - name: Format total duration
-      ansible.builtin.set_fact:
-        total_duration_output: >-
-          DURATION_SECONDS={{ '%.2f' | format((end_time.stdout | float) - (start_time.stdout | float)) }}
-
-    - name: Register total duration
-      ansible.builtin.set_fact:
-        query_execution:
-          stderr_lines: ["{{ total_duration_output }}"]
-    
-    - name: Set end datetime fact
-      ansible.builtin.set_fact:
-        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
-
-  post_tasks:
-  - name: Post Processing
-    ansible.builtin.include_role:
-      name: post_processing
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"

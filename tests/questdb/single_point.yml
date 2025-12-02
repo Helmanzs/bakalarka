@@ -1,53 +1,41 @@
-- name: Start QuestDB VM
-  hosts: questdb
-  gather_facts: false
-  vars:
+- name: Set query facts
+  ansible.builtin.set_fact:
     vehicle_id: "186"
     target_timestamp: "2024-12-02T17:52:54"
 
-  roles:
-    - role: common
-      create: false
-    - role: questdb
-      create: false
+- name: Wait for QuestDB port to be available
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    delay: 3
+    timeout: 30
 
-  tasks:
-    - name: Wait for QuestDB port to be available
-      ansible.builtin.wait_for:
-        host: "{{ db_host }}"
-        port: "{{ db_port }}"
-        delay: 3
-        timeout: 30
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Set start datetime fact
-      ansible.builtin.set_fact:
-        start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Perform indexed lookup
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
+    -c "SELECT VehicleID FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = timestamp '{{ target_timestamp }}';"
+  register: query_execution
+  changed_when: false
 
-    - name: Perform indexed lookup
-      ansible.builtin.shell: |
-        /usr/bin/time -f "DURATION_SECONDS=%e" \
-        psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
-        -c "SELECT VehicleID FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = timestamp '{{ target_timestamp }}';"
-      register: query_execution
-      changed_when: false
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-    - name: Set end datetime fact
-      ansible.builtin.set_fact:
-        end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
+    -t -c "SELECT count(*) FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = timestamp '{{ target_timestamp }}';" \
+    | tr -d '[:space:]'
+  register: query_rows_returned
+  changed_when: false
 
-    - name: Get number of rows returned
-      ansible.builtin.shell: |
-        psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
-        -t -c "SELECT count(*) FROM {{ db_table }} WHERE VehicleID = {{ vehicle_id }} AND GpsTime = timestamp '{{ target_timestamp }}';" \
-        | tr -d '[:space:]'
-      register: query_rows_returned
-      changed_when: false
+- name: Set number of rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | int }}"
 
-    - name: Set number of rows returned
-      ansible.builtin.set_fact:
-        rows_returned: "{{ query_rows_returned.stdout | int }}"
 
-  post_tasks:
-  - name: Post Processing
-    ansible.builtin.include_role:
-      name: post_processing

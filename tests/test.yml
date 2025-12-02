@@ -1,0 +1,32 @@
+---
+- name: Start Target LXD Instance(s)
+  hosts: servers
+  roles:
+    - role: common-start
+      vars: 
+        vm_name: "{{ database }}"
+        
+- name: Start test {{ test_type }} for {{ database }}
+  hosts: "{{ database }}"
+  pre_tasks:
+    - name: Load database specific definitions
+      ansible.builtin.include_vars:
+        file: "{{ ansible_role_dir }}/{{ database }}/defaults/main.yml"
+
+  tasks:
+    - name: Wait for {{ database }} to be available
+      ansible.builtin.wait_for:
+        host: "{{ db_host }}"
+        port: "{{ db_port }}"
+        delay: 2
+        timeout: 60
+        state: started
+
+    - name: Start {{ database }} - {{ test_type }}
+      ansible.builtin.include_tasks:
+        file: "{{ database }}/{{ test_type }}.yml"
+
+  post_tasks:
+  - name: Common Post Processing
+    ansible.builtin.include_role:
+      name: common-post-processing
