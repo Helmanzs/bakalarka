@@ -20,10 +20,17 @@
   ansible.builtin.set_fact:
     end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
+# - name: Get Query Timing
+#   ansible.builtin.include_role:
+#     name: clickhousedb
+#     tasks_from: get_query_timing
+#   vars:
+#     max_attempts: 6
+#     retry_delay: 5
+
 - name: Get Query Timing
-  ansible.builtin.include_role:
-    name: clickhousedb
-    tasks_from: get_query_timing
+  ansible.builtin.include_tasks: helper/get_query_timing.yml
   vars:
     max_attempts: 6
     retry_delay: 5
+    query_search_pattern: "%VehicleID = ''{{ vehicle_id }}''%"

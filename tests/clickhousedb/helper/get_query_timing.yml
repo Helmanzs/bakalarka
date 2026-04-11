@@ -5,7 +5,7 @@
     ansible.builtin.set_fact:
       attempt_number: "{{ attempt_number | d(0) | int + 1 }}"
 
-  - name: Capture query timing
+  - name: Capture query timing from ClickHouse Log
     ansible.builtin.shell: |
       clickhouse-client \
         --query="
@@ -15,12 +15,18 @@
             result_rows
           FROM system.query_log
           WHERE type = 'QueryFinish'
-            AND query LIKE '%VehicleID = ''{{ vehicle_id }}''%'
-            AND query LIKE '%GpsTime = toDateTime(''{{ target_timestamp }}'')%'
+            AND event_date >= today()
+            AND query LIKE '%{{ query_search_pattern }}%'
+            AND query NOT LIKE '%system.query_log%' 
           ORDER BY event_time DESC
           LIMIT 1"
     register: timing_results
     changed_when: false
+
+  - name: Validate timing results
+    ansible.builtin.fail:
+      msg: "Could not find query in system.query_log matching pattern: {{ query_search_pattern }}"
+    when: timing_results.stdout == ""
 
   - name: Parse latency metrics
     ansible.builtin.set_fact:
@@ -49,3 +55,4 @@
 
     - name: Include ourselves to retry.
       ansible.builtin.include_tasks: get_query_timing.yml
+
