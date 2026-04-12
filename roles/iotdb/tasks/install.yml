@@ -71,19 +71,29 @@
     line: 'MAX_HEAP_SIZE="{{ datanode_heap }}"'
     state: present
 
-- name: Configure IoTDB system properties
+- name: Set cluster_name
   ansible.builtin.replace:
     path: /iotdb/conf/iotdb-system.properties
-    regexp: |
-      ^cluster_name=.*
-      ^cn_internal_address=.*
-      ^dn_rpc_address=.*
-      ^dn_internal_address=.*
-    replace: |
-      cluster_name={{ iotdb_cluster_name }}
-      cn_internal_address={{ iotdb_cn_internal_address }}
-      dn_rpc_address={{ iotdb_dn_rpc_address }}
-      dn_internal_address={{ iotdb_dn_internal_address }}
+    regexp: '^cluster_name=.*'
+    replace: 'cluster_name={{ iotdb_cluster_name }}'
+
+- name: Set cn_internal_address
+  ansible.builtin.replace:
+    path: /iotdb/conf/iotdb-system.properties
+    regexp: '^cn_internal_address=.*'
+    replace: 'cn_internal_address={{ iotdb_cn_internal_address }}'
+
+- name: Set dn_rpc_address
+  ansible.builtin.replace:
+    path: /iotdb/conf/iotdb-system.properties
+    regexp: '^dn_rpc_address=.*'
+    replace: 'dn_rpc_address={{ iotdb_dn_rpc_address }}'
+
+- name: Set dn_internal_address
+  ansible.builtin.replace:
+    path: /iotdb/conf/iotdb-system.properties
+    regexp: '^dn_internal_address=.*'
+    replace: 'dn_internal_address={{ iotdb_dn_internal_address }}'
 
 - name: Create systemd service for ConfigNode
   ansible.builtin.template:

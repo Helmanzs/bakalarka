@@ -1,0 +1,16 @@
+---
+- name: Load profiles
+  ansible.builtin.include_vars:
+    file: "{{ ansible_vars_dir }}/resource_profiles.yml"
+
+- name: Validate profile is provided
+  ansible.builtin.assert:
+    that:
+      - profile is defined
+      - profile in profiles
+    fail_msg: "Invalid or missing profile: {{ profile }}"
+
+- name: Extract limits from profile
+  set_fact:
+    ram_limit: "{{ profiles[profile].ram_limit }}"
+    cpu_limit: "{{ profiles[profile].cpu_limit }}"

@@ -1,6 +1,7 @@
 ---
-- name: Get CPU and RAM profiles
-  ansible.builtin.include_tasks: "include_profiles.yml"
+- name: Load hardware profiles
+  ansible.builtin.include_role:
+    name: profile-loader
 
 - name: Create LXD instance(s)
   ansible.builtin.include_tasks: "create.yml"

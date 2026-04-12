@@ -8,8 +8,7 @@ ANSIBLE_VERBOSITY=""
 DATABASE=""
 TEST_TYPE=""
 REPEAT=1
-RAM="2"
-CPU="1"
+PROFILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -34,24 +33,20 @@ while [[ $# -gt 0 ]]; do
       HOSTS_FILE="inventory/${HOST_GROUP}"
       shift 2
       ;;
-    -ram)
-      RAM="$2"
-      shift 2
-      ;;
-    -cpu)
-      CPU="$2"
+    -p|-profile)
+      PROFILE="$2"
       shift 2
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [-database <name>|*] [-test_type <name>|*] [-ram <GB>] [-cpu <cores>] [-r <1..N>] [-i <inventory>]"
+      echo "Usage: $0 [-database <name>|*] [-test_type <name>|*] [-profile <name>] [-r <1..N>] [-i <inventory>]"
       exit 1
       ;;
   esac
 done
 
 DATABASES=($(yq eval '.all.children.databases.hosts | keys | .[]' "$HOSTS_FILE"))
-TEST_TYPES=($(yq eval '.test_types | keys | .[]' "$TESTS_FILE"))
+TEST_TYPES=($(yq eval '.test_types[]' "$TESTS_FILE"))
 
 print_options() {
   local label="$1"; shift
@@ -153,16 +148,20 @@ for (( run=1; run<=REPEAT; run++ )); do
       echo "  Run:      $run / $REPEAT"
       echo "========================================="
       echo
-      echo "Launching in 3 seconds. Press 'X' to cancel."
-      for i in 3 2 1; do
-        echo "$i..."
-        read -t 1 -n 1 key
-        if [[ "$key" =~ [Xx] ]]; then
-          echo "Cancelled by user."
-          exit 0
-        fi
-      done
-      ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" -e "database=$db test_type=$test results_dir=$RESULTS_DIR run=$run ram_limit=$RAM cpu_limit=$CPU"
+      if [[ -t 0 ]]; then
+        echo "Launching in 3 seconds. Press 'X' to cancel."
+        for i in 3 2 1; do
+          echo "$i..."
+          read -t 1 -n 1 key || true
+          if [[ "$key" =~ [Xx] ]]; then
+            echo "Cancelled by user."
+            exit 0
+          fi
+        done
+      else
+        echo "Non-interactive mode detected (no TTY). Skipping countdown."
+      fi
+      ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" -e "database=$db test_type=$test results_dir=$RESULTS_DIR run=$run profile=$PROFILE"
     done
   done
 done

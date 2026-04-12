@@ -1,5 +1,4 @@
 ---
-
 - name: Setup LXD Instance(s)
   hosts: servers
   vars:

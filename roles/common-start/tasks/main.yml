@@ -1,6 +1,7 @@
 ---
-- name: Get CPU and RAM profiles
-  ansible.builtin.include_tasks: "include_profiles.yml"
+# - name: Load hardware profiles
+#   ansible.builtin.include_role:
+#     name: profile-loader
 
 - name: Set stable VM name
   ansible.builtin.set_fact:

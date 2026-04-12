@@ -35,6 +35,7 @@
 
 - name: Split and compress file into chunks
   ansible.builtin.shell: |
+    set -euo pipefail
     split -l 10000 /tmp/{{ data_file }} {{ temp_dir }}/chunk_
     pigz {{ temp_dir }}/chunk_*
   args:

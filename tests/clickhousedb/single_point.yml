@@ -11,7 +11,7 @@
   ansible.builtin.shell: |
     clickhouse-client \
       --query="SELECT * FROM {{ db_table }} 
-              WHERE VehicleID = '{{ vehicle_id }}}' 
+              WHERE VehicleID = '{{ vehicle_id }}' 
               AND GpsTime = toDateTime('{{ target_timestamp }}');"
   register: query_execution
   changed_when: false

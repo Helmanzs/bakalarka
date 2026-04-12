@@ -1,0 +1,12 @@
+profiles:
+  small:
+    ram_limit: "2GiB"
+    cpu_limit: "1"
+
+  medium:
+    ram_limit: "4GiB"
+    cpu_limit: "2"
+
+  large:
+    ram_limit: "8GiB"
+    cpu_limit: "4"
