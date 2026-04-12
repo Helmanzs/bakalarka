@@ -1,0 +1,39 @@
+- name: Set query facts
+  ansible.builtin.set_fact:
+    vehicle_id: "186"
+    start_target_timestamp: "1733161174000"   # 2024-12-02T17:42:54 UTC in ms
+    end_target_timestamp:   "1733161774000"   # 2024-12-02T17:52:54 UTC in ms
+    min_lon: "13.0"
+    max_lon: "15.0"
+    min_lat: "50.0"
+    max_lat: "51.0"
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform Range + Geo Lookup
+  ansible.builtin.shell: |
+    /iotdb/sbin/start-cli.sh \
+    -h {{ db_host }} -p {{ db_port }} -e \
+    "SELECT * FROM root.sus_uk.vehicle_{{ vehicle_id }} \
+    WHERE time >= {{ start_target_timestamp }} \
+    AND time <= {{ end_target_timestamp }} \
+    AND Longitude >= {{ min_lon }} \
+    AND Longitude <= {{ max_lon }} \
+    AND Latitude >= {{ min_lat }} \
+    AND Latitude <= {{ max_lat }};"
+  register: query_result
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Capture total line number
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_result.stdout | regex_search('Total line number = ([0-9]+)', '\\1') | first }}"
+
+- name: Capture query duration in seconds
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ query_result.stdout | regex_search('It costs ([0-9.]+)s', '\\1') | first }}"

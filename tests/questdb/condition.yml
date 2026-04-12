@@ -1,0 +1,58 @@
+- name: Set query facts
+  ansible.builtin.set_fact:
+    vehicle_id: "186"
+    query_start_time: "2024-12-02T17:42:54"
+    query_end_time: "2024-12-02T17:52:54"
+    min_lon: "13.0"
+    max_lon: "15.0"
+    min_lat: "50.0"
+    max_lat: "51.0"
+
+- name: Wait for QuestDB port to be available
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    delay: 3
+    timeout: 30
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform Range + Geo Lookup
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
+    -c "SELECT VehicleID FROM {{ db_table }}
+        WHERE VehicleID = {{ vehicle_id }}
+        AND GpsTime >= timestamp '{{ query_start_time }}'
+        AND GpsTime <= timestamp '{{ query_end_time }}'
+        AND Longitude >= {{ min_lon }}
+        AND Longitude <= {{ max_lon }}
+        AND Latitude >= {{ min_lat }}
+        AND Latitude <= {{ max_lat }};" \
+  register: query_execution
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
+    -t -c "SELECT count(*) FROM {{ db_table }}
+           WHERE VehicleID = {{ vehicle_id }}
+           AND GpsTime >= timestamp '{{ query_start_time }}'
+           AND GpsTime <= timestamp '{{ query_end_time }}'
+           AND Longitude >= {{ min_lon }}
+           AND Longitude <= {{ max_lon }}
+           AND Latitude >= {{ min_lat }}
+           AND Latitude <= {{ max_lat }};" \
+    | tr -d '[:space:]'
+  register: query_rows_returned
+  changed_when: false
+
+- name: Set number of rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | int }}"

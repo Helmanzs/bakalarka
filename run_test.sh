@@ -3,6 +3,7 @@
 HOST_GROUP="local"
 HOSTS_FILE="inventory/${HOST_GROUP}"
 TESTS_FILE="vars/test_types.yml"
+PROFILES_FILE="vars/resource_profiles.yml"
 
 ANSIBLE_VERBOSITY=""
 DATABASE=""
@@ -45,7 +46,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-DATABASES=($(yq eval '.all.children.databases.hosts | keys | .[]' "$HOSTS_FILE"))
+DATABASES=($(yq eval '.databases.hosts // {} | keys | .[]' "$HOSTS_FILE"))
 TEST_TYPES=($(yq eval '.test_types[]' "$TESTS_FILE"))
 
 print_options() {
@@ -108,6 +109,26 @@ fi
 
 echo
 
+RAM=""
+CPU=""
+
+if [[ -n "$PROFILE" ]]; then
+  RAM=$(yq eval ".profiles.${PROFILE}.ram_limit" "$PROFILES_FILE")
+  CPU=$(yq eval ".profiles.${PROFILE}.cpu_limit" "$PROFILES_FILE")
+
+  if [[ "$RAM" == "null" || -z "$RAM" ]]; then
+    echo "ERROR: Unknown RAM for profile '$PROFILE'"
+    exit 1
+  fi
+
+  if [[ "$CPU" == "null" || -z "$CPU" ]]; then
+    echo "ERROR: Unknown CPU for profile '$PROFILE'"
+    exit 1
+  fi
+fi
+
+echo
+
 if [[ "$DATABASE" == "*" ]]; then
     DATABASES_TO_RUN=("${DATABASES[@]}")
 else
@@ -142,7 +163,7 @@ for (( run=1; run<=REPEAT; run++ )); do
       echo "Running playbook:"
       echo "  Database: $db"
       echo "  Test:     $test"
-      echo "  RAM:      ${RAM:-unset}GB"
+      echo "  RAM:      ${RAM:-unset}"
       echo "  CPU:      ${CPU:-unset} Core"
       echo "========================================="
       echo "  Run:      $run / $REPEAT"

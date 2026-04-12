@@ -1,0 +1,50 @@
+- name: Wait for MariaDB to start
+  ansible.builtin.wait_for:
+    path: "{{ socket }}"
+    state: present
+    timeout: 60
+
+- name: Set query facts
+  ansible.builtin.set_fact:
+    vehicle_id: "186"
+    query_start_time: "2024-12-02T17:42:54"
+    query_end_time: "2024-12-02T17:52:54"
+    min_lon: "13.0"
+    max_lon: "15.0"
+    min_lat: "50.0"
+    max_lat: "51.0"
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform Range + Geo Lookup
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    mysql {{ db_database }} -S {{ socket }} -e \
+    "SELECT VehicleID FROM {{ db_table }}
+     WHERE VehicleID = {{ vehicle_id }}
+     AND GpsTime BETWEEN '{{ query_start_time }}' AND '{{ query_end_time }}'
+     AND Longitude BETWEEN {{ min_lon }} AND {{ max_lon }}
+     AND Latitude BETWEEN {{ min_lat }} AND {{ max_lat }};"
+  register: query_execution
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    mysql {{ db_database }} -S {{ socket }} -e \
+    "SELECT count(VehicleID) FROM {{ db_table }}
+     WHERE VehicleID = {{ vehicle_id }}
+     AND GpsTime BETWEEN '{{ query_start_time }}' AND '{{ query_end_time }}'
+     AND Longitude BETWEEN {{ min_lon }} AND {{ max_lon }}
+     AND Latitude BETWEEN {{ min_lat }} AND {{ max_lat }};"
+  register: query_rows_returned
+  changed_when: false
+
+- name: Get rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ (query_rows_returned.stdout | regex_search('(?im)(\\d+)', '\\1'))[0] | int }}"

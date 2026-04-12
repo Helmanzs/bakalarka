@@ -9,35 +9,32 @@
     ansible.builtin.shell: |
       clickhouse-client \
         --query="
-          SELECT 
+          SELECT
             query_duration_ms,
             read_rows,
             result_rows
           FROM system.query_log
           WHERE type = 'QueryFinish'
-            AND event_date >= today()
-            AND query LIKE '%{{ query_search_pattern }}%'
-            AND query NOT LIKE '%system.query_log%' 
-          ORDER BY event_time DESC
+            AND query_id = '{{ clickhouse_query_id }}'
           LIMIT 1"
     register: timing_results
     changed_when: false
 
   - name: Validate timing results
     ansible.builtin.fail:
-      msg: "Could not find query in system.query_log matching pattern: {{ query_search_pattern }}"
-    when: timing_results.stdout == ""
+      msg: "Could not find query in system.query_log with query_id: {{ clickhouse_query_id }}"
+    when: timing_results.stdout | trim == ""
 
   - name: Parse latency metrics
     ansible.builtin.set_fact:
       latency_parts: "{{ timing_results.stdout_lines[0].split('\t') }}"
 
   - name: Extract individual metrics as facts
-    ansible.builtin.set_fact: 
-      query_duration_ms: "{{ (latency_parts[0] | float ) * 0.001}}"
+    ansible.builtin.set_fact:
+      query_duration_ms: "{{ (latency_parts[0] | float) * 0.001 }}"
       rows_read: "{{ latency_parts[1] | int }}"
       rows_returned: "{{ latency_parts[2] | int }}"
-  
+
   rescue:
     - name: "Fail if we reached the max of {{ max_attempts | d(3) }} attempts"
       ansible.builtin.fail:
@@ -55,4 +52,3 @@
 
     - name: Include ourselves to retry.
       ansible.builtin.include_tasks: get_query_timing.yml
-

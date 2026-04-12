@@ -30,6 +30,15 @@
     rows_returned: "{{ query_rows_returned.stdout | string }}"
   when: rows_returned is not defined and query_rows_returned is defined
 
+- name: Read VM config file
+  ansible.builtin.slurp:
+    src: /tmp/vm_config.json
+  register: vm_config_raw
+
+- name: Parse JSON config
+  ansible.builtin.set_fact:
+    vm_config: "{{ vm_config_raw.content | b64decode | from_json }}"
+
 - name: Save result
   block:
     - name: Set local result fact on each host
@@ -42,8 +51,9 @@
           query_duration_ms: "{{ query_duration_ms }}"
           rows_read: "{{ rows_read | default('NA') }}"
           rows_returned: "{{ rows_returned | default('0') }}"
-          ram_limit: "{{ ram_limit | default('NA') }}"
-          cpu_limit: "{{ cpu_limit | default('NA') }}"
+          ram_limit: "{{ vm_config.ram_limit | default('NA') }}"
+          cpu_limit: "{{ vm_config.cpu_limit | default('NA') }}"
+          profile: "{{ vm_config.profile | default('NA') }}"
 
     - name: Append this host’s result to NDJSON file
       delegate_to: localhost

@@ -48,3 +48,12 @@
 - name: Gather facts for first time
   ansible.builtin.setup:
   when: ansible_connection == 'ssh'
+
+- name: Write config safely into container
+  ansible.builtin.shell: |
+    echo '{{ {
+      "vm_name": vm_name,
+      "ram_limit": ram_limit,
+      "cpu_limit": cpu_limit,
+      "profile": profile
+    } | to_json }}' | lxc file push - {{ vm_name }}/tmp/vm_config.json

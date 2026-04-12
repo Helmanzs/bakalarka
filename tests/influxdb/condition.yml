@@ -1,0 +1,68 @@
+- name: Set query facts
+  ansible.builtin.set_fact:
+    vehicle_id: "186"
+    query_start_time: "2024-12-02 17:42:54"
+    query_end_time: "2024-12-02 17:52:54"
+    min_lon: "13.0"
+    max_lon: "15.0"
+    min_lat: "50.0"
+    max_lat: "51.0"
+
+- name: Read token from .bashrc
+  ansible.builtin.shell: grep INFLUXDB3_AUTH_TOKEN /root/.bashrc | cut -d'=' -f2
+  register: influxdb_token
+  become: true
+
+- name: Set token fact
+  ansible.builtin.set_fact:
+    influxdb_token: "{{ influxdb_token.stdout | trim('\"') }}"
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform Range + Geo Lookup
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    influxdb3 query \
+      --database {{ db_table }} \
+      --format csv \
+      "SELECT * FROM {{ db_table }}
+       WHERE (\"VehicleID\") = '{{ vehicle_id }}'
+       AND time >= timestamp '{{ query_start_time }}'
+       AND time <= timestamp '{{ query_end_time }}'
+       AND \"Longitude\" >= {{ min_lon }}
+       AND \"Longitude\" <= {{ max_lon }}
+       AND \"Latitude\" >= {{ min_lat }}
+       AND \"Latitude\" <= {{ max_lat }}"
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+    INFLUXDB3_AUTH_TOKEN: "{{ influxdb_token }}"
+  register: query_execution
+  changed_when: false
+  become: true
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    influxdb3 query \
+      --database {{ db_table }} \
+      --format csv \
+      "SELECT count(*) FROM {{ db_table }}
+       WHERE (\"VehicleID\") = '{{ vehicle_id }}'
+       AND time >= timestamp '{{ query_start_time }}'
+       AND time <= timestamp '{{ query_end_time }}'
+       AND \"Longitude\" >= {{ min_lon }}
+       AND \"Longitude\" <= {{ max_lon }}
+       AND \"Latitude\" >= {{ min_lat }}
+       AND \"Latitude\" <= {{ max_lat }}" \
+    | sed -n '2p'
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+    INFLUXDB3_AUTH_TOKEN: "{{ influxdb_token }}"
+  register: query_rows_returned
+  changed_when: false
+  become: true

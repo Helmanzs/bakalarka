@@ -1,3 +1,27 @@
+- name: Read VM config file
+  ansible.builtin.slurp:
+    src: /tmp/vm_config.json
+  register: vm_config_raw
+
+- name: Parse JSON config
+  ansible.builtin.set_fact:
+    vm_config: "{{ vm_config_raw.content | b64decode | from_json }}"
+
+- name: Set CPU and RAM limits from VM config
+  ansible.builtin.set_fact:
+    cpu_limit: "{{ vm_config.cpu_limit }}"
+    ram_limit: "{{ vm_config.ram_limit }}"
+
+- name: Compute CPU-based runtime parameters
+  ansible.builtin.set_fact:
+    cpu_cores: "{{ cpu_limit | int }}"
+    threads: "{{ (cpu_limit | int * 2) | int }}"
+    parallel_imports: >-
+      {{
+        (cpu_limit | int <= 2)
+        | ternary(2, (cpu_limit | int * 2))
+      }}
+
 - name: Truncate all data in IoTDB
   ansible.builtin.command: >
     /iotdb/sbin/start-cli.sh

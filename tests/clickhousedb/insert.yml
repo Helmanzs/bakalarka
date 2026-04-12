@@ -22,7 +22,7 @@
   ansible.builtin.shell: |
     /usr/bin/time -f "DURATION_SECONDS=%e" \
     sudo clickhouse-client \
-      -q "INSERT INTO {{ db_table }} FORMAT CSVWithNames COMPRESSION 'gzip'" \
+      -q "INSERT INTO {{ db_table }} FORMAT CSVWithNames" \
       < {{ import_dir }}/{{ data_gz }}
   args:
     executable: /bin/bash

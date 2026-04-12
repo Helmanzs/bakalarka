@@ -7,6 +7,7 @@
     max_lon: "15.0"
     min_lat: "50.0"
     max_lat: "51.0"
+    clickhouse_query_id: "ansible-condition-{{ ansible_date_time.epoch }}"
 
 - name: Set start datetime fact (Performance Timer)
   ansible.builtin.set_fact:
@@ -15,8 +16,9 @@
 - name: Perform Range + Geo Lookup
   ansible.builtin.shell: |
     clickhouse-client \
-      --query="SELECT * FROM {{ db_table }} 
-               WHERE VehicleID = '{{ vehicle_id }}' 
+      --query_id="{{ clickhouse_query_id }}" \
+      --query="SELECT * FROM {{ db_table }}
+               WHERE VehicleID = '{{ vehicle_id }}'
                AND GpsTime BETWEEN toDateTime('{{ query_start_time }}') AND toDateTime('{{ query_end_time }}')
                AND Longitude BETWEEN {{ min_lon }} AND {{ max_lon }}
                AND Latitude BETWEEN {{ min_lat }} AND {{ max_lat }};"
@@ -27,17 +29,8 @@
   ansible.builtin.set_fact:
     end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-# - name: Get Query Timing
-#   ansible.builtin.include_role:
-#     name: clickhousedb
-#     tasks_from: get_query_timing
-#   vars:
-#     max_attempts: 6
-#     retry_delay: 5
-
 - name: Get Query Timing
   ansible.builtin.include_tasks: helper/get_query_timing.yml
   vars:
     max_attempts: 6
     retry_delay: 5
-    query_search_pattern: "VehicleID = ''{{ vehicle_id }}'' AND GpsTime BETWEEN toDateTime(''{{ query_start_time }}'') AND toDateTime(''{{ query_end_time }}'')"
