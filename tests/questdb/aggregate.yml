@@ -1,0 +1,47 @@
+- name: Wait for QuestDB port to be available
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    delay: 3
+    timeout: 30
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform aggregate query - avg and max speed per car over the last hour
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
+    -c "SELECT
+          VehicleID,
+          AVG(SpeedGps)  AS avg_speed,
+          MAX(SpeedGps)  AS max_speed,
+          COUNT(*)       AS record_count
+        FROM {{ db_table }}
+        WHERE GpsTime >= dateadd('h', -1, now())
+        GROUP BY VehicleID
+        ORDER BY VehicleID;"
+  register: query_execution
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    psql "host={{ db_host }} port={{ db_port }} dbname={{ db_database }} user={{ db_user }} password={{ db_password }}" \
+    -t -c "SELECT COUNT(*) FROM (
+             SELECT VehicleID
+             FROM {{ db_table }}
+             WHERE GpsTime BETWEEN '2024-12-04 05:40:11' AND '2024-12-04 06:40:11'
+             GROUP BY VehicleID
+           ) sub;" \
+    | tr -d '[:space:]'
+  register: query_rows_returned
+  changed_when: false
+
+- name: Set number of rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | int }}"

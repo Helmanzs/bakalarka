@@ -1,0 +1,54 @@
+- name: Read token from .bashrc
+  ansible.builtin.shell: grep INFLUXDB3_AUTH_TOKEN /root/.bashrc | cut -d'=' -f2
+  register: influxdb_token
+  become: true
+
+- name: Set token fact
+  ansible.builtin.set_fact:
+    influxdb_token: "{{ influxdb_token.stdout | trim('\"') }}"
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform aggregate query - avg and max speed per car over the last hour
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    influxdb3 query \
+      --database {{ db_table }} \
+      --format csv \
+      "SELECT
+         \"VehicleID\",
+         AVG(\"SpeedGps\")  AS avg_speed,
+         MAX(\"SpeedGps\")  AS max_speed,
+         COUNT(*)           AS record_count
+       FROM {{ db_table }}
+       WHERE time >= timestamp '2024-12-04 05:40:11'
+         AND time <= timestamp '2024-12-04 06:40:11'
+       GROUP BY \"VehicleID\"
+       ORDER BY \"VehicleID\""
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+    INFLUXDB3_AUTH_TOKEN: "{{ influxdb_token }}"
+  register: query_execution
+  changed_when: false
+  become: true
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    influxdb3 query \
+      --database {{ db_table }} \
+      --format csv \
+      "SELECT COUNT(DISTINCT \"VehicleID\") FROM {{ db_table }}
+       WHERE time >= timestamp '2024-12-04 05:40:11'
+         AND time <= timestamp '2024-12-04 06:40:11'" \
+    | sed -n '2p'
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+    INFLUXDB3_AUTH_TOKEN: "{{ influxdb_token }}"
+  register: query_rows_returned
+  changed_when: false
+  become: true

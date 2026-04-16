@@ -1,3 +1,4 @@
+---
 - name: Read VM config file
   ansible.builtin.slurp:
     src: /tmp/vm_config.json

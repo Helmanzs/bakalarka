@@ -1,0 +1,87 @@
+---
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Query - AVG SpeedGps
+  ansible.builtin.shell: |
+    /iotdb/sbin/start-cli.sh \
+    -h {{ db_host }} -p {{ db_port }} \
+    -u {{ db_user }} -pw {{ db_password }} \
+    -e "SELECT AVG(SpeedGps)
+        FROM root.sus_uk.*
+        WHERE time >= 1730670011000 AND time <= 1733328011000;"
+  register: avg_result
+  changed_when: false
+
+- name: Query - MAX SpeedGps
+  ansible.builtin.shell: |
+    /iotdb/sbin/start-cli.sh \
+    -h {{ db_host }} -p {{ db_port }} \
+    -u {{ db_user }} -pw {{ db_password }} \
+    -e "SELECT MAX_VALUE(SpeedGps)
+        FROM root.sus_uk.*
+        WHERE time >= 1730670011000 AND time <= 1733328011000;"
+  register: max_result
+  changed_when: false
+
+- name: Query - COUNT SpeedGps
+  ansible.builtin.shell: |
+    /iotdb/sbin/start-cli.sh \
+    -h {{ db_host }} -p {{ db_port }} \
+    -u {{ db_user }} -pw {{ db_password }} \
+    -e "SELECT COUNT(SpeedGps)
+        FROM root.sus_uk.*
+        WHERE time >= 1730670011000 AND time <= 1733328011000;"
+  register: count_result
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Extract AVG query time
+  ansible.builtin.set_fact:
+    avg_duration_s: >-
+      {{
+        (
+          avg_result.stdout
+          | regex_findall('([0-9.]+)s')
+          | last | default('0')
+        ) | float
+      }}
+
+- name: Extract MAX query time
+  ansible.builtin.set_fact:
+    max_duration_s: >-
+      {{
+        (
+          max_result.stdout
+          | regex_findall('([0-9.]+)s')
+          | last | default('0')
+        ) | float
+      }}
+
+- name: Extract COUNT query time
+  ansible.builtin.set_fact:
+    count_duration_s: >-
+      {{
+        (
+          count_result.stdout
+          | regex_findall('([0-9.]+)s')
+          | last | default('0')
+        ) | float
+      }}
+
+- name: Capture number of devices
+  ansible.builtin.set_fact:
+    rows_returned: "{{ count_result.stdout | regex_findall('COUNT') | length }}"
+
+- name: Capture total query duration in seconds
+  ansible.builtin.set_fact:
+    query_duration_ms: >-
+      {{
+        (avg_duration_s | float) +
+        (max_duration_s | float) +
+        (count_duration_s | float)
+      }}

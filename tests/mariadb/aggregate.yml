@@ -1,0 +1,45 @@
+- name: Wait for MariaDB to start
+  ansible.builtin.wait_for:
+    path: "{{ socket }}"
+    state: present
+    timeout: 60
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform aggregate query - avg and max speed per car over fixed 1-hour window
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    mysql {{ db_database }} -S {{ socket }} -e \
+    "SELECT
+       VehicleID,
+       AVG(SpeedGps)  AS avg_speed,
+       MAX(SpeedGps)  AS max_speed,
+       COUNT(*)       AS record_count
+     FROM {{ db_table }}
+     WHERE GpsTime BETWEEN '2024-12-04 05:40:11' AND '2024-12-04 06:40:11'
+     GROUP BY VehicleID
+     ORDER BY VehicleID;"
+  register: query_execution
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    mysql {{ db_database }} -S {{ socket }} -e \
+    "SELECT COUNT(*) FROM (
+       SELECT VehicleID
+       FROM {{ db_table }}
+       WHERE GpsTime BETWEEN '2024-12-04 05:40:11' AND '2024-12-04 06:40:11'
+       GROUP BY VehicleID
+     ) sub;"
+  register: query_rows_returned
+  changed_when: false
+
+- name: Get rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ (query_rows_returned.stdout | regex_search('(?im)(\\d+)', '\\1'))[0] | int }}"

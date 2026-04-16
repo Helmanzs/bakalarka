@@ -1,0 +1,56 @@
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform aggregate query - avg and max speed per car over the last hour
+  ansible.builtin.shell: |
+    /usr/bin/time -f "DURATION_SECONDS=%e" \
+    mongosh --eval 'use {{ db_database }};' \
+    --eval 'db.{{ db_table }}.aggregate([
+      {
+        $match: {
+          GpsTime: { $gte: new Date(Date.now() - 60 * 60 * 1000) }
+        }
+      },
+      {
+        $group: {
+          _id: "$VehicleID",
+          avg_speed: { $avg: "$SpeedGps" },
+          max_speed: { $max: "$SpeedGps" },
+          record_count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ])'
+  register: query_execution
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get number of rows returned
+  ansible.builtin.shell: |
+    mongosh --eval 'use {{ db_database }};' \
+    --eval 'db.{{ db_table }}.aggregate([
+      {
+        $match: {
+          GpsTime: {
+            $gte: new Date("2024-12-04T05:40:11Z"),
+            $lte: new Date("2024-12-04T06:40:11Z")
+          }
+        }
+      },
+      {
+        $group: { _id: "$VehicleID" }
+      },
+      {
+        $count: "total"
+      }
+    ]).toArray()[0]?.total ?? 0'
+  register: query_rows_returned
+  changed_when: false
+
+- name: Get rows returned
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | int }}"

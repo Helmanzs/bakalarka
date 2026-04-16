@@ -1,0 +1,33 @@
+- name: Set query facts
+  ansible.builtin.set_fact:
+    clickhouse_query_id: "ansible-aggregate-{{ ansible_date_time.epoch }}"
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Perform aggregate query - avg and max speed per car over the last hour
+  ansible.builtin.shell: |
+    clickhouse-client \
+      --query_id="{{ clickhouse_query_id }}" \
+      --query="SELECT
+                 VehicleID,
+                 avg(SpeedGps) AS avg_speed,
+                 max(SpeedGps) AS max_speed,
+                 count()       AS record_count
+               FROM {{ db_table }}
+               WHERE GpsTime BETWEEN '2024-12-04 05:40:11' AND '2024-12-04 06:40:11'
+               GROUP BY VehicleID
+               ORDER BY VehicleID;"
+  register: query_execution
+  changed_when: false
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get Query Timing
+  ansible.builtin.include_tasks: helper/get_query_timing.yml
+  vars:
+    max_attempts: 6
+    retry_delay: 5

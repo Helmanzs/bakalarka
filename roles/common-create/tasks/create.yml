@@ -45,6 +45,15 @@
     timeout: "{{ lxd_ssh_timeout | default(120) }}"
   when: ansible_connection == 'ssh'
 
+- name: Wait for SSH port to become open
+  ansible.builtin.wait_for:
+    host: "{{ hostvars[inventory_hostname].ansible_host }}"
+    port: 22
+    delay: 10
+    timeout: 300
+  delegate_to: localhost
+  when: ansible_connection == 'ssh'
+
 - name: Gather facts for first time
   ansible.builtin.setup:
   when: ansible_connection == 'ssh'

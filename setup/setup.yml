@@ -37,6 +37,32 @@
         path: /var/lib/cloud/instance/boot-finished
         timeout: 300
         state: present
+    
+    - name: Ensure Ubuntu apt sources use HTTPS instead of HTTP
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: '^\s*URIs:\s*http://'
+        replace: 'URIs: https://'
+        backup: yes
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install packages
+      ansible.builtin.package:
+        name:
+          - python3
+          - gnupg
+          - curl
+          - python3-pip
+          - tar
+          - wget
+          - pigz
+          - sudo
+          - acpid
+          - micro
+        state: present
 
   roles:
     - role: "{{ target }}"
