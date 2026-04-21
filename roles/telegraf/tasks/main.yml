@@ -1,3 +1,0 @@
----
-- name: Install and configure Telegraf
-  ansible.builtin.include_tasks: install.yml
