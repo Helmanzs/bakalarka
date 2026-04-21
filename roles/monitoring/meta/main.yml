@@ -1,0 +1,26 @@
+galaxy_info:
+  author: Helmanz
+  description: >
+    Installs and configures Prometheus and Grafana on an LXD-based virtual machine.
+    Prometheus scrapes node_exporter metrics from all database VMs.
+    Grafana is exposed for dashboard viewing.
+    Designed for Ubuntu 24.04 images deployed via LXD.
+  license: MIT
+  min_ansible_version: 2.16
+  version: 1.0.0
+  namespace: helmanz
+
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 24.04
+
+  galaxy_tags:
+    - prometheus
+    - grafana
+    - monitoring
+    - lxd
+    - virtualization
+    - ubuntu
+
+dependencies: []

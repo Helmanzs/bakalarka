@@ -1,0 +1,180 @@
+{% raw %}
+{
+  "title": "DB Benchmark - Test Run Analysis",
+  "uid": "db-benchmark-tests",
+  "tags": ["benchmark", "database"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "database",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(node_uname_info, database)",
+        "refresh": 2,
+        "label": "Database",
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU & Memory % — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 - (avg by (database) (rate(node_cpu_seconds_total{mode=\"idle\", database=\"$database\"}[10s])) * 100)",
+          "legendFormat": "CPU %"
+        },
+        {
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{database=\"$database\"} / node_memory_MemTotal_bytes{database=\"$database\"}))",
+          "legendFormat": "Memory %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Disk IO Throughput — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(node_disk_read_bytes_total{database=\"$database\"}[10s]))",
+          "legendFormat": "Read bytes/s"
+        },
+        {
+          "expr": "sum(rate(node_disk_written_bytes_total{database=\"$database\"}[10s]))",
+          "legendFormat": "Write bytes/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Disk IO Operations — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(node_disk_reads_completed_total{database=\"$database\"}[10s]))",
+          "legendFormat": "Reads/s"
+        },
+        {
+          "expr": "sum(rate(node_disk_writes_completed_total{database=\"$database\"}[10s]))",
+          "legendFormat": "Writes/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "iops" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Memory Breakdown — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "node_memory_MemTotal_bytes{database=\"$database\"} - node_memory_MemFree_bytes{database=\"$database\"} - node_memory_Buffers_bytes{database=\"$database\"} - node_memory_Cached_bytes{database=\"$database\"}",
+          "legendFormat": "Used"
+        },
+        {
+          "expr": "node_memory_Buffers_bytes{database=\"$database\"} + node_memory_Cached_bytes{database=\"$database\"}",
+          "legendFormat": "Buffers+Cache"
+        },
+        {
+          "expr": "node_memory_MemFree_bytes{database=\"$database\"}",
+          "legendFormat": "Free"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "bytes" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Network IO — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(node_network_receive_bytes_total{database=\"$database\", device!~\"lo\"}[10s]))",
+          "legendFormat": "Receive bytes/s"
+        },
+        {
+          "expr": "sum(rate(node_network_transmit_bytes_total{database=\"$database\", device!~\"lo\"}[10s]))",
+          "legendFormat": "Transmit bytes/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "System Load — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "node_load1{database=\"$database\"}",
+          "legendFormat": "Load 1m"
+        },
+        {
+          "expr": "node_load5{database=\"$database\"}",
+          "legendFormat": "Load 5m"
+        },
+        {
+          "expr": "node_load15{database=\"$database\"}",
+          "legendFormat": "Load 15m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Context Switches & Interrupts — $database",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(node_context_switches_total{database=\"$database\"}[10s])",
+          "legendFormat": "Context switches/s"
+        },
+        {
+          "expr": "rate(node_intr_total{database=\"$database\"}[10s])",
+          "legendFormat": "Interrupts/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}
+{% endraw %}

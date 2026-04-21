@@ -1,0 +1,176 @@
+{% raw %}
+{
+  "title": "System Overview - DB Benchmark VMs",
+  "uid": "db-benchmark-system",
+  "tags": ["benchmark", "system"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "database",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(node_uname_info, database)",
+        "refresh": 2,
+        "label": "Database",
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU Usage % by Database VM",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 - (avg by (database) (rate(node_cpu_seconds_total{mode=\"idle\", database=~\"$database\"}[1m])) * 100)",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 70 },
+              { "color": "red", "value": 90 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Memory Usage % by Database VM",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "100 * (1 - (node_memory_MemAvailable_bytes{database=~\"$database\"} / node_memory_MemTotal_bytes{database=~\"$database\"}))",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Disk Read Throughput (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (database) (rate(node_disk_read_bytes_total{database=~\"$database\"}[1m]))",
+          "legendFormat": "{{database}} read"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Disk Write Throughput (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (database) (rate(node_disk_written_bytes_total{database=~\"$database\"}[1m]))",
+          "legendFormat": "{{database}} write"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Network Receive (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (database) (rate(node_network_receive_bytes_total{database=~\"$database\", device!~\"lo\"}[1m]))",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Network Transmit (bytes/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum by (database) (rate(node_network_transmit_bytes_total{database=~\"$database\", device!~\"lo\"}[1m]))",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "Bps" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Load Average (1m)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "node_load1{database=~\"$database\"}",
+          "legendFormat": "{{database}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short" }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Disk IO Utilization %",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(node_disk_io_time_seconds_total{database=~\"$database\"}[1m]) * 100",
+          "legendFormat": "{{database}} - {{device}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}
+{% endraw %}

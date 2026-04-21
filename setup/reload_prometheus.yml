@@ -1,0 +1,25 @@
+---
+- name: Reload Prometheus configuration
+  hosts: monitoring
+  gather_facts: false
+  tasks:
+    - name: Send reload signal to Prometheus
+      ansible.builtin.uri:
+        url: "http://localhost:{{ prometheus_port | default(9090) }}/-/reload"
+        method: POST
+        status_code: [200, 204]
+      register: reload_result
+
+    - name: Confirm reload
+      ansible.builtin.debug:
+        msg: "Prometheus configuration reloaded (HTTP {{ reload_result.status }})"
+
+    - name: Wait for Prometheus to be healthy after reload
+      ansible.builtin.uri:
+        url: "http://localhost:{{ prometheus_port | default(9090) }}/-/healthy"
+        method: GET
+        status_code: 200
+      register: health_check
+      until: health_check.status == 200
+      retries: 10
+      delay: 3

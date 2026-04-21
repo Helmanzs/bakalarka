@@ -1,0 +1,45 @@
+global:
+  scrape_interval: {{ prometheus_scrape_interval }}
+  evaluation_interval: {{ prometheus_evaluation_interval }}
+  external_labels:
+    monitor: 'db-benchmark'
+
+# Alerting rules directory
+rule_files:
+  - "{{ prometheus_config_dir }}/rules/*.yml"
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:{{ prometheus_port }}']
+        labels:
+          instance: 'monitoring'
+
+  # Node exporter on all database VMs
+  # Each database VM must have node_exporter running on port {{ node_exporter_port }}
+  - job_name: 'node_exporter'
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+{% for host in groups['databases'] | default([]) %}
+{% if hostvars[host]['ansible_host'] is defined %}
+        - '{{ hostvars[host]['ansible_host'] }}:{{ node_exporter_port }}'
+{% endif %}
+{% endfor %}
+        labels: {}
+    relabel_configs:
+      # Add the database name as a label from the target address
+      - source_labels: [__address__]
+        target_label: instance
+        regex: '([^:]+):.*'
+        replacement: '${1}'
+      # Map IP back to the database name for readability
+{% for host in groups['databases'] | default([]) %}
+{% if hostvars[host]['ansible_host'] is defined %}
+      - source_labels: [__address__]
+        regex: '{{ hostvars[host]['ansible_host'] }}:{{ node_exporter_port }}'
+        target_label: database
+        replacement: '{{ host }}'
+{% endif %}
+{% endfor %}

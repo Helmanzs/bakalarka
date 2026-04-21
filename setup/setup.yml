@@ -66,3 +66,14 @@
 
   roles:
     - role: "{{ target }}"
+    - role: node-exporter
+
+  post_tasks:
+  - name: Notify monitoring VM to reload Prometheus config
+    ansible.builtin.uri:
+      url: "http://{{ hostvars['monitoring']['ansible_host'] }}:9090/-/reload"
+      method: POST
+      status_code: [200, 204]
+    delegate_to: localhost
+    when: "'monitoring' in groups and groups['monitoring'] | length > 0"
+    ignore_errors: true

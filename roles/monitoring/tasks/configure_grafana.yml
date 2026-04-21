@@ -1,0 +1,55 @@
+---
+- name: Create Grafana provisioning directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: grafana
+    mode: "0750"
+  loop:
+    - "{{ grafana_provisioning_dir }}/datasources"
+    - "{{ grafana_provisioning_dir }}/dashboards"
+
+- name: Provision Prometheus datasource
+  ansible.builtin.template:
+    src: grafana_datasource.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/datasources/prometheus.yml"
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana
+
+- name: Provision dashboard loader config
+  ansible.builtin.template:
+    src: grafana_dashboard_loader.yml.j2
+    dest: "{{ grafana_provisioning_dir }}/dashboards/default.yml"
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana
+
+- name: Create dashboard directory
+  ansible.builtin.file:
+    path: /var/lib/grafana/dashboards
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: "0750"
+
+- name: Deploy database benchmarking dashboard
+  ansible.builtin.template:
+    src: dashboard_db_benchmark.json.j2
+    dest: /var/lib/grafana/dashboards/db_benchmark.json
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana
+
+- name: Deploy system overview dashboard
+  ansible.builtin.template:
+    src: dashboard_system_overview.json.j2
+    dest: /var/lib/grafana/dashboards/system_overview.json
+    owner: grafana
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana

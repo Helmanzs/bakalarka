@@ -1,0 +1,61 @@
+---
+- name: Create monitoring VM
+  hosts: servers
+  tasks:
+    - name: Load monitoring defaults
+      ansible.builtin.include_vars:
+        file: "{{ ansible_role_dir }}/monitoring/defaults/main.yml"
+
+    - name: Create LXD instance for monitoring
+      ansible.builtin.include_role:
+        name: common-create
+      vars:
+        vm_name: monitoring
+        vm_ip: "{{ hostvars['monitoring']['ansible_host'] }}"
+
+    - name: Wait for SSH to be up
+      ansible.builtin.wait_for:
+        host: "{{ hostvars['monitoring']['ansible_host'] }}"
+        port: 22
+        state: started
+        delay: 2
+        timeout: 60
+
+- name: Configure monitoring VM
+  hosts: monitoring
+  gather_facts: true
+  pre_tasks:
+    - name: Wait for cloud-init to complete
+      ansible.builtin.wait_for:
+        path: /var/lib/cloud/instance/boot-finished
+        timeout: 300
+        state: present
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install base packages
+      ansible.builtin.package:
+        name:
+          - python3
+          - gnupg
+          - curl
+          - wget
+          - ca-certificates
+          - apt-transport-https
+        state: present
+
+  roles:
+    - role: monitoring
+
+  post_tasks:
+    - name: Print access information
+      ansible.builtin.debug:
+        msg:
+          - "========================================"
+          - "Monitoring stack is up!"
+          - "Grafana:    http://{{ ansible_host }}:{{ grafana_port }}"
+          - "Prometheus: http://{{ ansible_host }}:{{ prometheus_port }}"
+          - "Credentials: {{ grafana_admin_user }} / {{ grafana_admin_password }}"
+          - "========================================"

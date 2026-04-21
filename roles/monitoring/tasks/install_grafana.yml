@@ -1,0 +1,61 @@
+---
+- name: Download Grafana GPG key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg.key
+    dest: /tmp/grafana.key
+    mode: "0644"
+
+- name: Dearmor and install Grafana GPG key
+  ansible.builtin.command:
+    cmd: gpg --dearmor --output /etc/apt/keyrings/grafana.gpg /tmp/grafana.key
+  args:
+    creates: /etc/apt/keyrings/grafana.gpg
+
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add Grafana APT repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+    update_cache: true
+  register: repo_result
+  retries: 5
+  delay: 10
+  until: repo_result is succeeded
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: true
+  register: result
+  retries: 5
+  delay: 10
+  until: result is succeeded
+
+- name: Configure Grafana
+  ansible.builtin.template:
+    src: grafana.ini.j2
+    dest: /etc/grafana/grafana.ini
+    owner: root
+    group: grafana
+    mode: "0640"
+  notify: Restart Grafana
+
+- name: Enable and start Grafana
+  ansible.builtin.systemd:
+    name: grafana-server
+    state: started
+    enabled: true
+
+- name: Wait for Grafana to be available
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ grafana_port }}"
+    delay: 5
+    timeout: 60

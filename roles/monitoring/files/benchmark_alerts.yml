@@ -1,0 +1,59 @@
+groups:
+  - name: benchmark_vm_health
+    interval: 15s
+    rules:
+
+      # Node exporter stopped reporting (VM down or exporter crashed)
+      - alert: DatabaseVMDown
+        expr: up{job="node_exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Database VM unreachable: {{ $labels.database }}"
+          description: "node_exporter on {{ $labels.database }} ({{ $labels.instance }}) has not reported for 30s."
+
+      # CPU pegged above 95% for 2 minutes — may indicate a runaway process
+      - alert: HighCPUUsage
+        expr: >
+          100 - (avg by (database) (rate(node_cpu_seconds_total{mode="idle", job="node_exporter"}[1m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU on {{ $labels.database }}"
+          description: "{{ $labels.database }} CPU usage is above 95% for 2 minutes (current: {{ $value | printf \"%.1f\" }}%)."
+
+      # Less than 10% memory free — risk of OOM kill mid-test
+      - alert: LowMemory
+        expr: >
+          (node_memory_MemAvailable_bytes{job="node_exporter"} / node_memory_MemTotal_bytes{job="node_exporter"}) * 100 < 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low memory on {{ $labels.database }}"
+          description: "{{ $labels.database }} has less than 10% memory available ({{ $value | printf \"%.1f\" }}% free). Risk of OOM."
+
+      # Disk filling up — protect against test data filling the root filesystem
+      - alert: DiskSpaceLow
+        expr: >
+          (node_filesystem_avail_bytes{job="node_exporter", mountpoint="/", fstype!="tmpfs"}
+           / node_filesystem_size_bytes{job="node_exporter", mountpoint="/", fstype!="tmpfs"}) * 100 < 15
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.database }}"
+          description: "{{ $labels.database }} root filesystem is {{ $value | printf \"%.1f\" }}% full."
+
+      # Sustained high disk IO wait — storage bottleneck during insert tests
+      - alert: HighDiskIOWait
+        expr: >
+          rate(node_disk_io_time_seconds_total{job="node_exporter"}[1m]) * 100 > 90
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk IO utilization on {{ $labels.database }}"
+          description: "{{ $labels.database }} disk {{ $labels.device }} IO utilization is above 90% ({{ $value | printf \"%.1f\" }}%)."

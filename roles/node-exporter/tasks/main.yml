@@ -1,0 +1,80 @@
+---
+- name: Create node_exporter system user
+  ansible.builtin.user:
+    name: "{{ node_exporter_user }}"
+    system: true
+    shell: /sbin/nologin
+    create_home: false
+
+- name: Download node_exporter
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: /tmp/node_exporter.tar.gz
+    mode: "0644"
+  register: download_result
+  until: download_result is succeeded
+  retries: 3
+  delay: 10
+
+- name: Extract node_exporter
+  ansible.builtin.unarchive:
+    src: /tmp/node_exporter.tar.gz
+    dest: /tmp/
+    remote_src: true
+
+- name: Install node_exporter binary
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: /usr/local/bin/node_exporter
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Clean up download
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/node_exporter.tar.gz
+    - "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64"
+
+- name: Create node_exporter systemd service
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/node_exporter.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Node Exporter
+      Wants=network-online.target
+      After=network-online.target
+
+      [Service]
+      User={{ node_exporter_user }}
+      Group={{ node_exporter_user }}
+      Type=simple
+      Restart=on-failure
+      ExecStart=/usr/local/bin/node_exporter \
+        --web.listen-address=0.0.0.0:{{ node_exporter_port }} \
+        --collector.systemd \
+        --collector.processes
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start node_exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    state: started
+    enabled: true
+
+- name: Verify node_exporter is listening
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ node_exporter_port }}"
+    delay: 2
+    timeout: 30
