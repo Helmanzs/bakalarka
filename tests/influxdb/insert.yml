@@ -1,3 +1,9 @@
+- name: Remove temp chunk directory
+  ansible.builtin.file:
+    path: "{{ temp_dir }}"
+    state: absent
+  become: true
+
 - name: Read token from .bashrc
   ansible.builtin.shell: grep INFLUXDB3_AUTH_TOKEN /root/.bashrc | cut -d'=' -f2
   register: influxdb_token
@@ -46,15 +52,16 @@
   ansible.builtin.set_fact:
     start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
 
-- name: Upload compressed chunks to InfluxDB
+- name: Upload compressed chunks to InfluxDB 3
   ansible.builtin.shell: |
     /usr/bin/time -f "DURATION_SECONDS=%e" bash -c '
-      find {{ temp_dir }} -name "*.gz" | xargs -n1 -P$(nproc) -I{} \
+      find {{ temp_dir }} -name "*.gz" -print0 | \
+      xargs -0 -n1 -P$(nproc) -I{} \
         curl --silent --show-error --fail \
-          --request POST "http://{{ db_host }}:{{ db_port }}/api/v2/write?org=ignored&bucket={{ db_table }}" \
-          --header "Authorization: Token {{ influxdb_token }}" \
-          --header "Content-Type: text/plain; charset=utf-8" \
+          --request POST "http://{{ db_host }}:{{ db_port }}/api/v3/write_lp?db={{ db_table }}&precision=auto&no_sync=true&accept_partial=false" \
+          --header "Authorization: Bearer {{ influxdb_token }}" \
           --header "Content-Encoding: gzip" \
+          --header "Content-Type: text/plain; charset=utf-8" \
           --data-binary @"{}"
     '
   register: query_execution
@@ -63,3 +70,9 @@
 - name: Set end datetime fact
   ansible.builtin.set_fact:
     end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Remove temp chunk directory
+  ansible.builtin.file:
+    path: "{{ temp_dir }}"
+    state: absent
+  become: true

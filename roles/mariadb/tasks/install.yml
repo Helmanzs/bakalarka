@@ -1,4 +1,3 @@
----
 - name: Install packages
   ansible.builtin.apt:
     name: "{{ vm_packages }}"
@@ -7,5 +6,61 @@
     update_cache: true
   when: vm_packages is defined and vm_packages | length > 0
 
+- name: Locate existing MariaDB bind-address config
+  ansible.builtin.shell: |
+    grep -rl "bind-address" /etc/mysql/ /etc/my.cnf* 2>/dev/null | head -n1
+  become: true
+  changed_when: false
+  failed_when: false
+  register: bind_conf
 
+- name: Ensure MariaDB listens on all interfaces (patch existing)
+  ansible.builtin.lineinfile:
+    path: "{{ bind_conf.stdout | default('') | trim }}"
+    regexp: '^\s*#?\s*bind-address\s*=.*'
+    line: 'bind-address = 0.0.0.0'
+    state: present
+  become: true
+  when:
+    - bind_conf.stdout is defined
+    - bind_conf.stdout | trim | length > 0
+  register: mariadb_bind_patch
+  notify: restart mariadb
 
+- name: Ensure local_infile is enabled in MariaDB server config
+  ansible.builtin.copy:
+    dest: /etc/mysql/conf.d/99-local-infile.cnf
+    content: |
+      [mysqld]
+      local_infile = 1
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  register: local_infile_config
+
+- name: Ensure MariaDB drop-in config directory exists
+  ansible.builtin.file:
+    path: /etc/mysql/conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+  when:
+    - bind_conf.stdout is not defined or bind_conf.stdout | trim | length == 0
+
+- name: Ensure MariaDB listens on all interfaces (drop-in)
+  ansible.builtin.copy:
+    dest: /etc/mysql/conf.d/99-bind-address.cnf
+    content: |
+      [mysqld]
+      bind-address = 0.0.0.0
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  when:
+    - bind_conf.stdout is not defined or bind_conf.stdout | trim | length == 0
+  register: mariadb_bind_dropin
+  notify: restart mariadb

@@ -112,7 +112,23 @@
     mode: '0440'
     validate: '/usr/sbin/visudo -cf %s'
 
-- name: Restart PostgreSQL
-  ansible.builtin.systemd:
-    name: postgresql
-    state: restarted
+- name: Ensure TCP trust auth is configured
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/pg_hba.conf
+    line: "host all all 0.0.0.0/0 trust"
+    insertafter: "^# IPv4 local connections"
+    state: present
+  notify:  restart postgresql
+
+- name: Configure PostgreSQL to listen on all interfaces
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.conf
+    regexp: "^#?listen_addresses\\s*=.*"
+    line: "listen_addresses = '*'"
+    state: present
+    backup: true
+  notify: restart postgresql
+
+- name: Reload PostgreSQL configuration
+  ansible.builtin.command: pg_ctlcluster 17 main reload
+  changed_when: true

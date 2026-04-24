@@ -1,2 +1,6 @@
 ---
-# handlers file for timescaledb
+- name: restart postgresql
+  ansible.builtin.systemd:
+    name: postgresql@17-main
+    state: restarted
+    daemon_reload: true

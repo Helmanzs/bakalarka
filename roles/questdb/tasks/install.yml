@@ -32,6 +32,13 @@
     path: /tmp/questdb.tar.gz
     state: absent
 
+- name: Configure QuestDB server.conf
+  ansible.builtin.template:
+    src: server.conf.j2
+    dest: /root/questdb/conf/server.conf
+    mode: "0644"
+  notify: restart questdb
+
 - name: Create systemd service for QuestDB
   ansible.builtin.template:
     src: questdb.service.j2

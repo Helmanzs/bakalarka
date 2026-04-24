@@ -1,2 +1,12 @@
 ---
-# handlers file for iotdb
+- name: restart datanode
+  ansible.builtin.systemd:
+    name: datanode.service
+    state: restarted
+    daemon_reload: true
+
+- name: restart confignode
+  ansible.builtin.systemd:
+    name: confignode.service
+    state: restarted
+    daemon_reload: true

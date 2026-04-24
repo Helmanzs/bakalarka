@@ -1,0 +1,109 @@
+---
+# tests/mongodb/live_insert.yml
+
+- name: Set live_insert defaults
+  ansible.builtin.set_fact:
+    workers:    "{{ workers    | default(4)   | int }}"
+    duration:   "{{ duration   | default(60)  | int }}"
+    batch_size: "{{ batch_size | default(500) | int }}"
+    ts_step_ms: "{{ ts_step_ms | default(100) | int }}"
+
+- name: Drop collection before live-insert test
+  community.mongodb.mongodb_shell:
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    db: "{{ db_database }}"
+    eval: "db.{{ db_table }}.drop()"
+  ignore_errors: true
+
+- name: Re-create timeseries collection
+  community.mongodb.mongodb_shell:
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    db: "{{ db_database }}"
+    eval: |
+      db.createCollection('{{ db_table }}', {
+        timeseries: {
+          timeField: "GpsTime",
+          metaField: "VehicleID",
+          granularity: "seconds"
+        }
+      })
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Run parallel live-insert workers
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    WORKERS={{ workers }}
+    DURATION={{ duration }}
+    BATCH={{ batch_size }}
+    STEP={{ ts_step_ms }}
+    TABLE={{ db_table }}
+    DB={{ db_database }}
+    HOST={{ hostvars[inventory_hostname]['ansible_host'] }}
+    PORT={{ db_port }}
+    END_TS=$(( $(date +%s) + DURATION ))
+
+    for (( w=1; w<=WORKERS; w++ )); do
+      (
+        VID_BASE=$(( (w - 1) * 10 + 200 ))
+        VIDS=$(seq -s, $VID_BASE $(( VID_BASE + 9 )))
+        TOTAL_ROWS=0
+        TMP=$(mktemp /tmp/live_mongo_XXXXXX.json)
+
+        while [[ $(date +%s) -lt $END_TS ]]; do
+          START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          python3 {{ project_root }}/tests/generate_live_data.py \
+            --format json \
+            --rows   "$BATCH" \
+            --table  "$TABLE" \
+            --vehicle-ids "$VIDS" \
+            --ts-start "$START_ISO" \
+            --ts-step-ms "$STEP" \
+          > "$TMP"
+
+          mongoimport \
+            --uri="mongodb://${HOST}:${PORT}/${DB}" \
+            --collection="$TABLE" \
+            --file="$TMP" \
+            --quiet
+
+          TOTAL_ROWS=$(( TOTAL_ROWS + BATCH ))
+        done
+
+        rm -f "$TMP"
+        echo "worker_${w}_rows=${TOTAL_ROWS}"
+      ) &
+    done
+
+    wait
+    echo "DURATION_SECONDS=${DURATION}"
+  args:
+    executable: /bin/bash
+  register: query_execution
+  delegate_to: localhost
+  changed_when: true
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get total rows inserted
+  ansible.builtin.shell: |
+    mongosh --eval 'use {{ db_database }};' \
+      --eval 'db.{{ db_table }}.countDocuments({})' \
+      --quiet
+  register: query_rows_returned
+  changed_when: false
+
+- name: Set rows_returned fact
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | trim }}"
+
+- name: Get query duration
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ duration | int }}"

@@ -112,6 +112,18 @@
     - { key: "Password", value: "{{ cross_engine_password }}" }
   changed_when: false
 
+- name: Ensure MariaDB is externally reachable (override safety layer)
+  ansible.builtin.copy:
+    dest: /etc/mysql/mariadb.conf.d/99-bind-external.cnf
+    content: |
+      [mysqld]
+      bind-address = 0.0.0.0
+      skip-networking = 0
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart services
+
 - name: Ensure MariaDB is running
   ansible.builtin.service:
     name: mariadb

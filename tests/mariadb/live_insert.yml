@@ -1,0 +1,123 @@
+---
+# tests/mariadb/live_insert.yml
+
+- name: Set live_insert defaults
+  ansible.builtin.set_fact:
+    workers:    "{{ workers    | default(4)   | int }}"
+    duration:   "{{ duration   | default(60)  | int }}"
+    batch_size: "{{ batch_size | default(500) | int }}"
+    ts_step_ms: "{{ ts_step_ms | default(100) | int }}"
+
+- name: Truncate table before live-insert test
+  ansible.builtin.shell: |
+    mariadb -h {{ hostvars[inventory_hostname]['ansible_host'] }} -P {{ db_port }} \
+      -u {{ db_user }} -p{{ db_password }} {{ db_database }} \
+      -e "TRUNCATE TABLE {{ db_table }};"
+  changed_when: true
+  delegate_to: localhost
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Run parallel live-insert workers (streaming from localhost)
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    WORKERS={{ workers }}
+    DURATION={{ duration }}
+    BATCH={{ batch_size }}
+    STEP={{ ts_step_ms }}
+    TABLE={{ db_table }}
+    DB={{ db_database }}
+    HOST={{ hostvars[inventory_hostname]['ansible_host'] }}
+    PORT={{ db_port }}
+    USER={{ db_user }}
+    PASS={{ db_password }}
+
+    END_TS=$(( $(date +%s) + DURATION ))
+    FAIL=0
+
+    for (( w=1; w<=WORKERS; w++ )); do
+      (
+        VID_BASE=$(( (w - 1) * 10 + 200 ))
+        VIDS=$(seq -s, $VID_BASE $(( VID_BASE + 9 )))
+        TOTAL_ROWS=0
+
+        while [[ $(date +%s) -lt $END_TS ]]; do
+          START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          python3 {{ project_root }}/tests/generate_live_data.py \
+            --format csv \
+            --rows   "$BATCH" \
+            --table  "$TABLE" \
+            --vehicle-ids "$VIDS" \
+            --ts-start "$START_ISO" \
+            --ts-step-ms "$STEP" \
+          | mariadb --local-infile=1 \
+              -h "$HOST" -P "$PORT" \
+              -u "$USER" --password="$PASS" "$DB" \
+              -e "LOAD DATA LOCAL INFILE '/dev/stdin'
+                  INTO TABLE ${TABLE}
+                  FIELDS TERMINATED BY ',' ENCLOSED BY '\"'
+                  LINES TERMINATED BY '\n'
+                  IGNORE 1 ROWS
+                  (orig_id, @orig_time, orig_topic, @CreatedTime, @GpsTime,
+                   GsmSignal, SatelliteCount, LicensePlate, VehicleType, Company,
+                   VehicleID, Technology, Ignition, Longitude, Latitude,
+                   SpeedGps, SpeedTach, SpeedCan, TachoGps, TachoTach,
+                   ModeDrive, SpreadingMode, Plow, Gram, WidthLeft, WidthRight,
+                   SumSalt, SumInert, SumBrine, Cuts1, Cuts2, Cuts3,
+                   CentralBroom, LeftBroom, RightBroom, Turbine, RunningShaft,
+                   LeftFlushing, RightFlushing, CentralFlushing, Misting, Pump,
+                   LightOn, ModeArrow, AkuVoltage, RampUp, Crash,
+                   TempAir, TempRoad, Revs, RevsExtension, Fuel, LevelPHM,
+                   PowerVoltage, Lighthouse)
+                  SET
+                    orig_time   = STR_TO_DATE(@orig_time,   '%Y-%m-%dT%H:%i:%s.%f'),
+                    CreatedTime = STR_TO_DATE(@CreatedTime, '%Y-%m-%dT%H:%i:%s.%f'),
+                    GpsTime     = STR_TO_DATE(@GpsTime,     '%Y-%m-%dT%H:%i:%s.%f');"
+
+          TOTAL_ROWS=$(( TOTAL_ROWS + BATCH ))
+        done
+
+        echo "worker_${w}_rows=${TOTAL_ROWS}"
+      ) &
+    done
+
+    for job in $(jobs -p); do
+      wait $job || FAIL=1
+    done
+
+    if [ $FAIL -ne 0 ]; then
+      echo "One or more workers failed" >&2
+      exit 1
+    fi
+
+    echo "DURATION_SECONDS=${DURATION}"
+  args:
+    executable: /bin/bash
+  register: query_execution
+  delegate_to: localhost
+  changed_when: true
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get total rows inserted
+  ansible.builtin.shell: |
+    mariadb -N -h {{ hostvars[inventory_hostname]['ansible_host'] }} -P {{ db_port }} \
+      -u {{ db_user }} -p{{ db_password }} {{ db_database }} \
+      -e "SELECT COUNT(*) FROM {{ db_table }};"
+  register: query_rows_returned
+  changed_when: false
+  delegate_to: localhost
+
+- name: Set rows_returned fact
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | trim }}"
+
+- name: Get query duration
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ duration | int }}"

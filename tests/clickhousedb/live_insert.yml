@@ -1,0 +1,89 @@
+---
+- name: Set live_insert defaults
+  ansible.builtin.set_fact:
+    workers:    "{{ workers    | default(4)   | int }}"
+    duration:   "{{ duration   | default(60)  | int }}"
+    batch_size: "{{ batch_size | default(500) | int }}"
+    ts_step_ms: "{{ ts_step_ms | default(100) | int }}"
+
+- name: Truncate table before live-insert test
+  ansible.builtin.shell: |
+    clickhouse-client -q "TRUNCATE TABLE {{ db_table }}"
+  changed_when: true
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Run parallel live-insert workers from controller
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    WORKERS={{ workers }}
+    DURATION={{ duration }}
+    BATCH={{ batch_size }}
+    STEP={{ ts_step_ms }}
+    TABLE={{ db_table }}
+    DB_HOST={{ hostvars[inventory_hostname]['ansible_host'] }}
+    HTTP_PORT=8123
+    END_TS=$(( $(date +%s) + DURATION ))
+
+    for (( w=1; w<=WORKERS; w++ )); do
+      (
+        VID_BASE=$(( (w - 1) * 10 + 200 ))
+        VIDS=$(seq -s, $VID_BASE $(( VID_BASE + 9 )))
+        TOTAL_ROWS=0
+
+        while [[ $(date +%s) -lt $END_TS ]]; do
+          START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          python3 {{ project_root }}/tests/generate_live_data.py \
+            --format csv \
+            --rows   "$BATCH" \
+            --table  "$TABLE" \
+            --vehicle-ids "$VIDS" \
+            --ts-start "$START_ISO" \
+            --ts-step-ms "$STEP" \
+          | curl --silent --show-error --fail \
+              "http://${DB_HOST}:${HTTP_PORT}/?query=INSERT+INTO+${TABLE}+FORMAT+CSVWithNames" \
+              --data-binary @-
+          TOTAL_ROWS=$(( TOTAL_ROWS + BATCH ))
+        done
+
+        echo "worker_${w}_rows=${TOTAL_ROWS}"
+      ) &
+    done
+
+    wait
+    echo "DURATION_SECONDS=${DURATION}"
+  args:
+    executable: /bin/bash
+  delegate_to: localhost
+  register: query_execution
+  changed_when: true
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Parse per-worker row counts
+  ansible.builtin.set_fact:
+    worker_stats: >-
+      {{
+        query_execution.stdout_lines
+        | select('match', '^worker_')
+        | list
+      }}
+
+- name: Get total rows inserted
+  ansible.builtin.shell: |
+    clickhouse-client -q "SELECT count() FROM {{ db_table }}"
+  register: query_rows_returned
+  changed_when: false
+
+- name: Set rows_returned fact
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | trim }}"
+
+- name: Get query duration
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ duration | int }}"

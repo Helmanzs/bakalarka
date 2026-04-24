@@ -20,11 +20,7 @@ sysctl_net_core_netdev_max_backlog: 2500
 
 db_user: cross_engine
 db_password: cross_engine
-db_privelages: "*.*:SELECT, PROCESS"
-
-db_user_allowed_hosts:
-  - 127.0.0.1
-  - localhost
+db_privileges: "*.*:INSERT,SELECT"
 
 db_database: raltra
 db_table: car_telemetry

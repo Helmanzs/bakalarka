@@ -1,0 +1,108 @@
+---
+- name: Set live_insert defaults
+  ansible.builtin.set_fact:
+    workers: "{{ workers | default(4) | int }}"
+    duration: "{{ duration | default(60) | int }}"
+    batch_size: "{{ batch_size | default(500) | int }}"
+    ts_step_ms: "{{ ts_step_ms | default(100) | int }}"
+
+- name: Read InfluxDB auth token
+  ansible.builtin.shell: grep INFLUXDB3_AUTH_TOKEN /root/.bashrc | cut -d'=' -f2
+  register: influxdb_token_raw
+  become: true
+
+- name: Set token fact
+  ansible.builtin.set_fact:
+    influxdb_token: "{{ influxdb_token_raw.stdout | trim('\"') }}"
+  no_log: true
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Run parallel live-insert workers
+  ansible.builtin.shell: |
+    WORKERS={{ workers }}
+    DURATION={{ duration }}
+    BATCH={{ batch_size }}
+    STEP={{ ts_step_ms }}
+    TABLE={{ db_table }}
+    TOKEN="{{ influxdb_token }}"
+    PORT="{{ db_port }}"
+    HOST="{{ hostvars[inventory_hostname]['ansible_host'] }}"
+    END_TS=$(( $(date +%s) + DURATION ))
+
+    for (( w=1; w<=WORKERS; w++ )); do
+      (
+        VID_BASE=$(( (w - 1) * 10 + 200 ))
+        VIDS=$(seq -s, $VID_BASE $(( VID_BASE + 9 )))
+        WORKER_ROWS=0
+        WORKER_ERRORS=0
+
+        while [[ $(date +%s) -lt $END_TS ]]; do
+          START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          RESPONSE=$(python3 {{ project_root }}/tests/generate_live_data.py \
+            --format line_protocol \
+            --rows "$BATCH" \
+            --table "$TABLE" \
+            --vehicle-ids "$VIDS" \
+            --ts-start "$START_ISO" \
+            --ts-step-ms "$STEP" \
+          | pigz \
+          | curl --silent --show-error \
+              --write-out "\nHTTP_STATUS:%{http_code}" \
+              --request POST "http://${HOST}:${PORT}/api/v3/write_lp?db=${TABLE}&precision=auto&no_sync=true&accept_partial=false" \
+              --header "Authorization: Bearer ${TOKEN}" \
+              --header "Content-Encoding: gzip" \
+              --header "Content-Type: text/plain; charset=utf-8" \
+              --data-binary @-)
+
+          HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | tail -1 | cut -d: -f2)
+
+          if [[ "$HTTP_STATUS" == "204" || "$HTTP_STATUS" == "200" ]]; then
+            WORKER_ROWS=$(( WORKER_ROWS + BATCH ))
+          else
+            WORKER_ERRORS=$(( WORKER_ERRORS + 1 ))
+            echo "worker_${w} error (HTTP ${HTTP_STATUS}): $(echo "$RESPONSE" | grep -v HTTP_STATUS)" >&2
+          fi
+        done
+
+        echo "worker_${w}_rows=${WORKER_ROWS}"
+        echo "worker_${w}_errors=${WORKER_ERRORS}"
+      ) &
+    done
+
+    wait
+    echo "DURATION_SECONDS=${DURATION}" >&2
+  args:
+    executable: /bin/bash
+  environment:
+    PATH: "/usr/local/bin:/usr/bin:/root/.influxdb"
+    INFLUXDB3_AUTH_TOKEN: "{{ influxdb_token }}"
+  register: query_execution
+  changed_when: true
+  delegate_to: localhost
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+
+- name: Wait for ingestion to become visible
+  ansible.builtin.pause:
+    seconds: 10
+
+- name: Aggregate worker rows safely
+  ansible.builtin.set_fact:
+    rows_returned: >-
+      {{
+        query_execution.stdout
+        | regex_findall('worker_\d+_rows=(\d+)')
+        | map('int')
+        | sum
+      }}
+
+- name: Set query duration fact
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ duration | int }}"

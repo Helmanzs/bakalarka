@@ -24,8 +24,8 @@ script_file: "send_data.sh"
 
 db_user: root
 db_password: root
-db_version: "2.0.7"
-db_zip_url: "https://dlcdn.apache.org/iotdb/{{ db_version }}/apache-iotdb-{{ db_version }}-all-bin.zip"
+db_version: "2.0.8"
+db_zip_url: "https://archive.apache.org/dist/iotdb/2.0.8/apache-iotdb-2.0.8-all-bin.zip"
 db_host: 127.0.0.1
 db_port: 6667
 

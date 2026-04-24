@@ -1,0 +1,97 @@
+---
+# tests/questdb/live_insert.yml
+
+- name: Set live_insert defaults
+  ansible.builtin.set_fact:
+    workers:    "{{ workers    | default(4)   | int }}"
+    duration:   "{{ duration   | default(60)  | int }}"
+    batch_size: "{{ batch_size | default(500) | int }}"
+    ts_step_ms: "{{ ts_step_ms | default(100) | int }}"
+
+- name: Wait for QuestDB port to be available
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: "{{ db_port }}"
+    delay: 3
+    timeout: 30
+
+- name: Truncate table before live-insert test
+  community.postgresql.postgresql_query:
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"
+    login_db: "{{ db_database }}"
+    query: "TRUNCATE TABLE {{ db_table }};"
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Run parallel live-insert workers
+  ansible.builtin.shell: |
+    set -euo pipefail
+
+    WORKERS={{ workers }}
+    DURATION={{ duration }}
+    BATCH={{ batch_size }}
+    STEP={{ ts_step_ms }}
+    TABLE={{ db_table }}
+    HOST={{ hostvars[inventory_hostname]['ansible_host'] }}
+    END_TS=$(( $(date +%s) + DURATION ))
+
+    for (( w=1; w<=WORKERS; w++ )); do
+      (
+        VID_BASE=$(( (w - 1) * 10 + 200 ))
+        VIDS=$(seq -s, $VID_BASE $(( VID_BASE + 9 )))
+        TOTAL_ROWS=0
+
+        while [[ $(date +%s) -lt $END_TS ]]; do
+          START_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          python3 {{ project_root }}/tests/generate_live_data.py \
+            --format questdb \
+            --rows "$BATCH" \
+            --table "$TABLE" \
+            --vehicle-ids "$VIDS" \
+            --ts-start "$START_ISO" \
+            --ts-step-ms "$STEP" \
+          | curl -X POST "http://${HOST}:9000/write" \
+              --data-binary @-
+
+          TOTAL_ROWS=$(( TOTAL_ROWS + BATCH ))
+        done
+
+        echo "worker_${w}_rows=${TOTAL_ROWS}"
+      ) &
+    done
+
+    wait
+    echo "DURATION_SECONDS=${DURATION}"
+  args:
+    executable: /bin/bash
+  register: query_execution
+  changed_when: true
+  delegate_to: localhost
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get total rows inserted
+  community.postgresql.postgresql_query:
+    login_host: "{{ db_host }}"
+    login_port: "{{ db_port }}"
+    login_user: "{{ db_user }}"
+    login_password: "{{ db_password }}"
+    login_db: "{{ db_database }}"
+    query: "SELECT COUNT(*) AS count FROM {{ db_table }};"
+  register: query_rows_returned
+
+- name: Set rows_returned fact
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.query_result[0].count }}"
+
+- name: Get query duration
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ duration | int }}"

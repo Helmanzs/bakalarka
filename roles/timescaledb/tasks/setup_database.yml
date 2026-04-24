@@ -1,14 +1,57 @@
----
+- name: Force timescaledb into shared_preload_libraries
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.conf
+    regexp: '^shared_preload_libraries\s*=.*'
+    line: "shared_preload_libraries = 'timescaledb'"
+    state: present
+    backup: true
+
+- name: Ensure no override in auto.conf
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.auto.conf
+    regexp: '^shared_preload_libraries\s*=.*'
+    state: absent
+
+- name: Restart PostgreSQL 17 main cluster
+  ansible.builtin.systemd:
+    name: postgresql@17-main
+    state: restarted
+    daemon_reload: true
+
+- name: Wait for PostgreSQL to accept connections
+  ansible.builtin.shell: |
+    for i in {1..30}; do
+      pg_isready -h /var/run/postgresql && exit 0
+      sleep 1
+    done
+    exit 1
+  changed_when: false
+
+- name: Verify timescaledb is actually preloaded
+  ansible.builtin.shell: |
+    psql -U postgres -h /var/run/postgresql -tc "SHOW shared_preload_libraries;" | grep timescaledb
+  changed_when: false
+
+- name: Ensure database exists
+  ansible.builtin.shell: |
+    psql -U postgres -h /var/run/postgresql -tc \
+      "SELECT 1 FROM pg_database WHERE datname='{{ db_database }}'" | grep -q 1 || \
+    psql -U postgres -h /var/run/postgresql -c \
+      "CREATE DATABASE {{ db_database }};"
+  register: db_create
+  changed_when: "'CREATE DATABASE' in db_create.stdout"
+
 - name: Create TimescaleDB extension
-  community.postgresql.postgresql_ext:
-    name: timescaledb
-    login_db: "{{ db_database }}"
+  ansible.builtin.shell: |
+    psql -U postgres -h /var/run/postgresql -d {{ db_database }} -c \
+      "CREATE EXTENSION IF NOT EXISTS timescaledb;"
+  register: ext_create
+  changed_when: "'CREATE EXTENSION' in ext_create.stdout"
 
 - name: Create table
-  community.postgresql.postgresql_query:
-    login_db: "{{ db_database }}"
-    query: |
-      CREATE TABLE {{ db_table }} (
+  ansible.builtin.shell: |
+    psql -U postgres -h /var/run/postgresql -d {{ db_database }} -c "
+      CREATE TABLE IF NOT EXISTS {{ db_table }} (
         orig_id INTEGER,
         orig_time TIMESTAMPTZ,
         orig_topic TEXT,
@@ -64,9 +107,11 @@
         levelphm DECIMAL(6,2),
         powervoltage DECIMAL(5,2),
         lighthouse SMALLINT
-      );
+      );"
 
 - name: Convert table to hypertable
-  community.postgresql.postgresql_query:
-    login_db: "{{ db_database }}"
-    query: "SELECT create_hypertable('{{ db_table }}', 'gpstime');"
+  ansible.builtin.shell: |
+    psql -U postgres -h /var/run/postgresql -d {{ db_database }} -c \
+      "SELECT create_hypertable('{{ db_table }}', 'gpstime', if_not_exists => TRUE);"
+  register: hypertable_result
+  changed_when: "'create_hypertable' in hypertable_result.stdout"

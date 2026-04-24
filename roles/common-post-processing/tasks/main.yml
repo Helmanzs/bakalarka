@@ -43,17 +43,24 @@
   block:
     - name: Set local result fact on each host
       ansible.builtin.set_fact:
-        local_result:
-          test_type: "{{ test_type }}"
-          host: "{{ inventory_hostname }}"
-          start_datetime: "{{ start_datetime }}"
-          end_datetime: "{{ end_datetime }}"
-          query_duration_ms: "{{ query_duration_ms }}"
-          rows_read: "{{ rows_read | default('NA') }}"
-          rows_returned: "{{ rows_returned | default('0') }}"
-          ram_limit: "{{ vm_config.ram_limit | default('NA') }}"
-          cpu_limit: "{{ vm_config.cpu_limit | default('NA') }}"
-          profile: "{{ vm_config.profile | default('NA') }}"
+        local_result: >-
+          {{
+            {
+              'test_type': test_type,
+              'host': inventory_hostname,
+              'start_datetime': start_datetime,
+              'end_datetime': end_datetime,
+              'query_duration_ms': query_duration_ms,
+              'rows_read': rows_read | default('NA'),
+              'rows_returned': rows_returned | default('0'),
+              'ram_limit': vm_config.ram_limit | default('NA'),
+              'cpu_limit': vm_config.cpu_limit | default('NA'),
+              'profile': vm_config.profile | default('NA')
+            }
+            | combine(workers is defined | ternary({'workers': workers | int}, {}))
+            | combine(batch_size is defined | ternary({'batch_size': batch_size | int}, {}))
+            | combine(ts_step_ms is defined | ternary({'ts_step_ms': ts_step_ms | int}, {}))
+          }}
 
     - name: Append this host’s result to NDJSON file
       delegate_to: localhost

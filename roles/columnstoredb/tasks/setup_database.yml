@@ -3,12 +3,11 @@
   community.mysql.mysql_user:
     name: "{{ db_user }}"
     password: "{{ db_password }}"
-    host: "{{ item }}"
-    priv: "{{ db_privelages | default('*.*:SELECT')}}"
+    host: "%"
+    priv: "{{ db_privileges | default('*.*:SELECT')}}"
     state: present
     login_unix_socket: "{{ socket }}"
     column_case_sensitive: false
-  loop: "{{ db_user_allowed_hosts }}"
   notify: Restart services
 
 - name: Ensure database exists

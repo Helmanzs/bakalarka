@@ -41,6 +41,18 @@
   delay: 10
   until: result is succeeded
 
+- name: Ensure ClickHouse listens on all interfaces
+  ansible.builtin.copy:
+    dest: /etc/clickhouse-server/config.d/listen.xml
+    content: |
+      <yandex>
+          <listen_host>0.0.0.0</listen_host>
+      </yandex>
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart ClickHouse
+
 - name: Enable and start ClickHouse service
   ansible.builtin.service:
     name: clickhouse-server

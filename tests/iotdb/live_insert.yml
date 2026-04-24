@@ -1,0 +1,140 @@
+---
+# tests/iotdb/live_insert.yml
+
+- name: Set live_insert defaults
+  ansible.builtin.set_fact:
+    workers:    "{{ workers    | default(4)   | int }}"
+    duration:   "{{ duration   | default(60)  | int }}"
+    batch_size: "{{ batch_size | default(500) | int }}"
+    ts_step_ms: "{{ ts_step_ms | default(100) | int }}"
+
+- name: Delete previous live-test data from IoTDB
+  ansible.builtin.command: >
+    /iotdb/sbin/start-cli.sh
+    -h {{ db_host }} -p {{ db_port }}
+    -u {{ db_user }} -pw {{ db_password }}
+    -e "DELETE TIMESERIES root.live_test.**;"
+  changed_when: false
+  ignore_errors: true
+
+- name: Set start datetime fact
+  ansible.builtin.set_fact:
+    start_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Run parallel live-insert workers
+  ansible.builtin.shell: |
+    set -uo pipefail
+
+    WORKERS={{ workers }}
+    DURATION={{ duration }}
+    BATCH={{ batch_size }}
+    STEP={{ ts_step_ms }}
+    TABLE="root.live_test"
+    HOST="{{ hostvars[inventory_hostname]['ansible_host'] }}"
+    REST_PORT=18080
+    USER={{ db_user }}
+    PASS={{ db_password }}
+    FAIL_DIR=/tmp/iotdb_live_failed
+    mkdir -p "$FAIL_DIR"
+    END_TS=$(( $(date +%s) + DURATION ))
+
+    for (( w=1; w<=WORKERS; w++ )); do
+      (
+        set +e
+        VID_BASE=$(( (w - 1) * 10 + 200 ))
+        VIDS=$(seq -s, $VID_BASE $(( VID_BASE + 9 )))
+        TOTAL_ROWS=0
+
+        NEXT_TS_MS=$(date +%s%3N)
+
+        while [[ $(date +%s) -lt $END_TS ]]; do
+         
+          SECS=$(( NEXT_TS_MS / 1000 ))
+          MS=$(( NEXT_TS_MS % 1000 ))
+          START_ISO=$(date -u -d "@$SECS" +%Y-%m-%dT%H:%M:%S).$(printf "%03d" $MS)Z
+
+          TMP=$(mktemp /tmp/live_iotdb_XXXXXX.json)
+
+          python3 {{ project_root }}/tests/generate_live_data.py \
+            --format iotdb \
+            --rows   "$BATCH" \
+            --table  "$TABLE" \
+            --vehicle-ids "$VIDS" \
+            --ts-start "$START_ISO" \
+            --ts-step-ms "$STEP" \
+          > "$TMP" 2>> "$FAIL_DIR/worker_${w}.log"
+
+          if [ $? -ne 0 ] || [ ! -s "$TMP" ]; then
+            echo "Worker $w: python failed or produced empty output" >> "$FAIL_DIR/worker_${w}.log"
+            rm -f "$TMP"
+            break
+          fi
+
+          LINES_SENT=0
+          while IFS= read -r tablet_json; do
+            [ -z "$tablet_json" ] && continue
+
+            RESP=$(mktemp /tmp/iotdb_resp_XXXXXX)
+            HTTP_CODE=$(curl -s -o "$RESP" -w "%{http_code}" \
+              -X POST "http://$HOST:$REST_PORT/rest/v1/insertTablet" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Basic $(echo -n "$USER:$PASS" | base64)" \
+              --data-binary "$tablet_json" \
+              2>> "$FAIL_DIR/worker_${w}.log")
+
+            if [ "$HTTP_CODE" != "200" ] && [ "$HTTP_CODE" != "204" ]; then
+              echo "Worker $w failed (HTTP $HTTP_CODE): $(cat "$RESP")" >> "$FAIL_DIR/worker_${w}.log"
+            else
+              LINES_SENT=$(( LINES_SENT + 1 ))
+            fi
+            rm -f "$RESP"
+          done < "$TMP"
+
+          rm -f "$TMP"
+
+          if [ "$LINES_SENT" -gt 0 ]; then
+            TOTAL_ROWS=$(( TOTAL_ROWS + BATCH ))
+            # Advance timestamp so the next batch starts where this one ended
+            NEXT_TS_MS=$(( NEXT_TS_MS + BATCH * STEP ))
+          fi
+        done
+
+        echo "worker_${w}_rows=${TOTAL_ROWS}"
+      ) &
+    done
+
+    wait
+    echo "DURATION_SECONDS=${DURATION}"
+  args:
+    executable: /bin/bash
+  register: query_execution
+  changed_when: true
+  delegate_to: "localhost"
+
+- name: Set end datetime fact
+  ansible.builtin.set_fact:
+    end_datetime: "{{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}"
+
+- name: Get total rows inserted (count across all live devices)
+  ansible.builtin.shell: |
+    /iotdb/sbin/start-cli.sh \
+      -h 127.0.0.1 -p 6667 \
+      -u root -pw root \
+      -e "SELECT COUNT(GpsTime) FROM root.live_test.vehicle_* GROUP BY LEVEL=3;" \
+      | awk -F'|' '
+          NF>=3 && $2 ~ /^[[:space:]]*[0-9]+[[:space:]]*$/ {
+              gsub(/[^0-9]/,"",$2)
+              sum += $2
+          }
+          END { print sum+0 }
+        '
+  register: query_rows_returned
+  changed_when: false
+
+- name: Set rows_returned fact
+  ansible.builtin.set_fact:
+    rows_returned: "{{ query_rows_returned.stdout | trim | default('0', true) }}"
+
+- name: Set query duration fact
+  ansible.builtin.set_fact:
+    query_duration_ms: "{{ duration | int }}"

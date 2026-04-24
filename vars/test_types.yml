@@ -3,3 +3,4 @@ test_types:
   - single_point
   - condition
   - aggregate
+  - live_insert

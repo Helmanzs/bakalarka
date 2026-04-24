@@ -95,6 +95,29 @@
     regexp: '^dn_internal_address=.*'
     replace: 'dn_internal_address={{ iotdb_dn_internal_address }}'
 
+- name: Enable REST API and set address/port
+  ansible.builtin.lineinfile:
+    path: /iotdb/conf/iotdb-system.properties
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: false
+  loop:
+    - { key: "enable_rest_service", value: "true" }
+    - { key: "rest_service_address", value: "0.0.0.0" }
+    - { key: "rest_service_port", value: "18080" }
+  notify: restart datanode
+
+- name: Ensure remote binding addresses are 0.0.0.0
+  ansible.builtin.lineinfile:
+    path: /iotdb/conf/iotdb-system.properties
+    regexp: "^{{ item }}="
+    line: "{{ item }}=0.0.0.0"
+  loop:
+    - dn_rpc_address
+    - dn_internal_address
+    - cn_internal_address
+  notify: restart confignode
+
 - name: Create systemd service for ConfigNode
   ansible.builtin.template:
     src: confignode.service.j2
@@ -127,5 +150,15 @@
   ansible.builtin.wait_for:
     host: "{{ db_host }}"
     port: "{{ db_port }}"
+    delay: 5
+    timeout: 60
+
+- name: Flush handlers to restart services immediately
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for REST API to be available
+  ansible.builtin.wait_for:
+    host: "{{ db_host }}"
+    port: 18080
     delay: 5
     timeout: 60
