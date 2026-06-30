@@ -129,6 +129,28 @@
     backup: true
   notify: restart postgresql
 
+- name: Force timescaledb into shared_preload_libraries
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.conf
+    regexp: '^shared_preload_libraries\s*=.*'
+    line: "shared_preload_libraries = 'timescaledb'"
+    state: present
+    backup: true
+  notify: restart postgresql
+
+- name: Ensure no override in auto.conf
+  ansible.builtin.lineinfile:
+    path: /etc/postgresql/17/main/postgresql.auto.conf
+    regexp: '^shared_preload_libraries\s*=.*'
+    state: absent
+  notify: restart postgresql
+
+- name: Restart PostgreSQL 17 main cluster
+  ansible.builtin.systemd:
+    name: postgresql@17-main
+    state: restarted
+    daemon_reload: true
+
 - name: Reload PostgreSQL configuration
   ansible.builtin.command: pg_ctlcluster 17 main reload
   changed_when: true

@@ -182,7 +182,7 @@ for (( run=1; run<=REPEAT; run++ )); do
       else
         echo "Non-interactive mode detected (no TTY). Skipping countdown."
       fi
-      ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" -e "database=$db test_type=$test results_dir=$RESULTS_DIR run=$run profile=$PROFILE"
+      ansible-playbook $ANSIBLE_VERBOSITY "$PLAYBOOK_PATH" -e "database=$db test_type=$test global_results_dir=$RESULTS_DIR run=$run profile=$PROFILE"
     done
   done
 done

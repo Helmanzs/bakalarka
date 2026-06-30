@@ -12,8 +12,7 @@
     - name: Load database specific definitions
       ansible.builtin.include_vars:
         file: "{{ ansible_role_dir }}/{{ database }}/defaults/main.yml"
-
-  tasks:
+    
     - name: Wait for {{ database }} to be available
       ansible.builtin.wait_for:
         host: "{{ db_host }}"
@@ -22,6 +21,7 @@
         timeout: 60
         state: started
 
+  tasks:
     - name: Start {{ database }} - {{ test_type }}
       ansible.builtin.include_tasks:
         file: "{{ database }}/{{ test_type }}.yml"
@@ -30,3 +30,9 @@
   - name: Common Post Processing
     ansible.builtin.include_role:
       name: common-post-processing
+
+  - name: Stop Target LXD Instance(s)
+    ansible.builtin.include_role:
+      name: common-stop
+    vars: 
+      vm_name: "{{ database }}"

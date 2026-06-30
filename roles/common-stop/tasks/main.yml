@@ -1,0 +1,7 @@
+---
+- name: Stop LXD Instance(s)
+  community.general.lxd_container:
+    name: "{{ vm_name}}"
+    state: stopped
+    type: "{{ lxd_container_type | default('virtual-machine') }}"
+  delegate_to: localhost

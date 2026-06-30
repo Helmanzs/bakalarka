@@ -65,4 +65,4 @@
       "ram_limit": ram_limit,
       "cpu_limit": cpu_limit,
       "profile": profile
-    } | to_json }}' | lxc file push - {{ vm_name }}/tmp/vm_config.json
+    } | to_json }}' | lxc file push - {{ vm_name }}/etc/vm_config.json

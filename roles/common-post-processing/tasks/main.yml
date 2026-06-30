@@ -1,4 +1,24 @@
 ---
+- name: Check VM config file exists
+  ansible.builtin.stat:
+    path: /etc/vm_config.json
+  register: vm_config_stat
+
+- name: Fail if VM config is missing
+  ansible.builtin.fail:
+    msg: "/etc/vm_config.json is missing."
+  when: not vm_config_stat.stat.exists
+
+- name: Read VM config file
+  ansible.builtin.slurp:
+    src: /etc/vm_config.json
+  register: vm_config_raw
+  when: vm_config_stat.stat.exists
+
+- name: Parse JSON config
+  ansible.builtin.set_fact:
+    vm_config: "{{ vm_config_raw.content | b64decode | from_json }}"
+
 - name: Get query duration
   block:
   - name: Get duration from stderr
@@ -29,15 +49,6 @@
   ansible.builtin.set_fact:
     rows_returned: "{{ query_rows_returned.stdout | string }}"
   when: rows_returned is not defined and query_rows_returned is defined
-
-- name: Read VM config file
-  ansible.builtin.slurp:
-    src: /tmp/vm_config.json
-  register: vm_config_raw
-
-- name: Parse JSON config
-  ansible.builtin.set_fact:
-    vm_config: "{{ vm_config_raw.content | b64decode | from_json }}"
 
 - name: Save result
   block:

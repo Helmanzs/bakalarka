@@ -77,3 +77,9 @@
     delegate_to: localhost
     when: "'monitoring' in groups and groups['monitoring'] | length > 0"
     ignore_errors: true
+
+  - name: Stop LXD Instance(s)
+    ansible.builtin.include_role:
+      name: common-stop
+    vars: 
+      vm_name: "{{ target }}"
